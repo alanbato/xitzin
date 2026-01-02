@@ -37,7 +37,7 @@ You should see output indicating the server is running on `gemini://localhost:19
 
 ## Connect with a Gemini Client
 
-Open your Gemini client (like [Lagrange](https://gmi.skyjake.fi/lagrange/)) and navigate to:
+Open your Gemini client (like [Astronomo](https://github.com/alanbato/astronomo/)) and navigate to:
 
 ```
 gemini://localhost/

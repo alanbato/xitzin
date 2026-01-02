@@ -153,7 +153,6 @@ Some interesting places in Geminispace:
 
 => gemini://geminiprotocol.net/ Gemini Protocol
 => gemini://geminispace.info/ Gemini Space
-=> gemini://gmi.skyjake.fi/ Lagrange Browser
 
 => / Back to Home
 """
@@ -278,7 +277,6 @@ Some interesting places in Geminispace:
 
 => gemini://geminiprotocol.net/ Gemini Protocol
 => gemini://geminispace.info/ Gemini Space
-=> gemini://gmi.skyjake.fi/ Lagrange Browser
 
 => / Back to Home
 """
