@@ -346,7 +346,7 @@ class TestXitzinMiddleware:
 
         @app.middleware
         async def modify_middleware(request, call_next):
-            response = await call_next(request)
+            _response = await call_next(request)
             return GeminiResponse(
                 status=StatusCode.SUCCESS,
                 meta="text/plain",

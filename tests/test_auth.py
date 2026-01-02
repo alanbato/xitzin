@@ -30,9 +30,7 @@ class TestCertificateIdentity:
 
     def test_short_id(self):
         """short_id returns first 16 characters."""
-        identity = CertificateIdentity(
-            fingerprint="1234567890abcdef1234567890abcdef"
-        )
+        identity = CertificateIdentity(fingerprint="1234567890abcdef1234567890abcdef")
         assert identity.short_id == "1234567890abcdef"
 
     def test_short_id_short_fingerprint(self):
@@ -42,9 +40,7 @@ class TestCertificateIdentity:
 
     def test_str_representation(self):
         """str() shows short ID."""
-        identity = CertificateIdentity(
-            fingerprint="1234567890abcdef1234567890abcdef"
-        )
+        identity = CertificateIdentity(fingerprint="1234567890abcdef1234567890abcdef")
         result = str(identity)
         assert "CertIdentity(" in result
         assert "1234567890abcdef" in result

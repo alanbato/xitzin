@@ -68,9 +68,7 @@ def get_identity(request: "Request") -> CertificateIdentity | None:
     return None
 
 
-def require_certificate(
-    handler: Callable[..., Any]
-) -> Callable[..., Any]:
+def require_certificate(handler: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator that requires a valid client certificate.
 
     If no certificate is provided, returns status 60 (certificate required).
@@ -131,9 +129,7 @@ def require_fingerprint(
     return decorator
 
 
-def optional_certificate(
-    handler: Callable[..., Any]
-) -> Callable[..., Any]:
+def optional_certificate(handler: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator that makes certificate identity available but not required.
 
     Sets request.state.identity to CertificateIdentity or None.

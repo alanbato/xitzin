@@ -6,9 +6,8 @@ and modify responses before they are sent to clients.
 
 from __future__ import annotations
 
-import asyncio
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from nauyaca.protocol.response import GeminiResponse
@@ -71,9 +70,7 @@ class BaseMiddleware(ABC):
         """
         return response
 
-    async def __call__(
-        self, request: "Request", call_next: CallNext
-    ) -> GeminiResponse:
+    async def __call__(self, request: "Request", call_next: CallNext) -> GeminiResponse:
         """Process the request through this middleware.
 
         This implements the middleware protocol by calling before_request,

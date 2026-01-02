@@ -27,9 +27,7 @@ class TestRouteCompilePath:
 
     def test_path_with_multiple_parameters(self):
         """Path with multiple parameters captures all."""
-        route = Route(
-            "/user/{id}/post/{post_id}", lambda r, id, post_id: (id, post_id)
-        )
+        route = Route("/user/{id}/post/{post_id}", lambda r, id, post_id: (id, post_id))
         assert route.matches("/user/123/post/456")
         assert not route.matches("/user/123")
         assert not route.matches("/user/123/post/")
@@ -75,9 +73,7 @@ class TestRouteExtractParams:
 
     def test_multiple_params(self):
         """Multiple parameters extracted correctly."""
-        route = Route(
-            "/user/{id}/post/{post_id}", lambda r, id, post_id: (id, post_id)
-        )
+        route = Route("/user/{id}/post/{post_id}", lambda r, id, post_id: (id, post_id))
         params = route.extract_params("/user/alice/post/42")
         assert params == {"id": "alice", "post_id": "42"}
 

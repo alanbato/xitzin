@@ -1,7 +1,6 @@
 """Tests for xitzin.middleware module."""
 
 import asyncio
-import time
 
 import pytest
 from nauyaca.protocol.request import GeminiRequest
@@ -31,9 +30,7 @@ class TestBaseMiddleware:
         raw = GeminiRequest.from_line("gemini://test/")
         request = Request(raw)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            mw.before_request(request)
-        )
+        result = asyncio.get_event_loop().run_until_complete(mw.before_request(request))
         assert result is None
 
     def test_default_after_response_returns_response(self):
@@ -92,9 +89,7 @@ class TestBaseMiddleware:
             pytest.fail("Handler should not be called")
             return GeminiResponse(status=20, meta="text/gemini")
 
-        result = asyncio.get_event_loop().run_until_complete(
-            mw(request, next_handler)
-        )
+        result = asyncio.get_event_loop().run_until_complete(mw(request, next_handler))
 
         assert result.status == 51
 
@@ -134,9 +129,7 @@ class TestBaseMiddleware:
         async def next_handler(req):
             return GeminiResponse(status=20, meta="text/gemini", body="Original")
 
-        result = asyncio.get_event_loop().run_until_complete(
-            mw(request, next_handler)
-        )
+        result = asyncio.get_event_loop().run_until_complete(mw(request, next_handler))
 
         assert "Modified: Original" in result.body
 
@@ -341,9 +334,7 @@ class TestRateLimitMiddleware:
         asyncio.get_event_loop().run_until_complete(mw.before_request(request))
 
         # Third should be blocked
-        result = asyncio.get_event_loop().run_until_complete(
-            mw.before_request(request)
-        )
+        result = asyncio.get_event_loop().run_until_complete(mw.before_request(request))
 
         assert isinstance(result, GeminiResponse)
         assert result.status == StatusCode.SLOW_DOWN
@@ -356,9 +347,7 @@ class TestRateLimitMiddleware:
         request = Request(raw)
 
         asyncio.get_event_loop().run_until_complete(mw.before_request(request))
-        result = asyncio.get_event_loop().run_until_complete(
-            mw.before_request(request)
-        )
+        result = asyncio.get_event_loop().run_until_complete(mw.before_request(request))
 
         assert result.meta == "15"
 

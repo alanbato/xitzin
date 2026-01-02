@@ -7,16 +7,15 @@ Gemini applications.
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, AsyncIterator
+from typing import TYPE_CHECKING, Any, Callable
 
 from nauyaca.protocol.request import GeminiRequest
 from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
 from .exceptions import GeminiException, NotFound
-from .requests import Request, RequestState
+from .requests import Request
 from .responses import Input, convert_response
 from .routing import Route, Router
 
@@ -322,7 +321,6 @@ class Xitzin:
             certfile: Path to TLS certificate file.
             keyfile: Path to TLS private key file.
         """
-        from nauyaca.server.config import ServerConfig
         from nauyaca.server.protocol import GeminiServerProtocol
         from nauyaca.security.certificates import generate_self_signed_cert
         from nauyaca.security.tls import create_server_context
@@ -360,7 +358,7 @@ class Xitzin:
                     kf.write(key_pem)
                     cf.flush()
                     kf.flush()
-                    print(f"[Xitzin] Using self-signed certificate (development only)")
+                    print("[Xitzin] Using self-signed certificate (development only)")
                     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                     ssl_context.load_cert_chain(cf.name, kf.name)
                     ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -371,7 +369,7 @@ class Xitzin:
 
             loop = asyncio.get_running_loop()
             server = await loop.create_server(
-                lambda: GeminiServerProtocol(handle, None),
+                lambda: GeminiServerProtocol(handle, None),  # type: ignore[arg-type]
                 host,
                 port,
                 ssl=ssl_context,

@@ -81,7 +81,9 @@ class Redirect:
 
     def to_gemini_response(self) -> GeminiResponse:
         status = (
-            StatusCode.REDIRECT_PERMANENT if self.permanent else StatusCode.REDIRECT_TEMPORARY
+            StatusCode.REDIRECT_PERMANENT
+            if self.permanent
+            else StatusCode.REDIRECT_TEMPORARY
         )
         return GeminiResponse(status=status, meta=self.url)
 

@@ -1,7 +1,5 @@
 """Tests for xitzin.testing module."""
 
-import pytest
-
 from xitzin import Request, Xitzin
 from xitzin.testing import TestClient, TestResponse, test_app
 
@@ -120,9 +118,7 @@ class TestTestResponse:
 
     def test_mime_type_strips_params(self):
         """mime_type strips charset and other parameters."""
-        response = TestResponse(
-            status=20, meta="text/gemini; charset=utf-8", body=""
-        )
+        response = TestResponse(status=20, meta="text/gemini; charset=utf-8", body="")
         assert response.mime_type == "text/gemini"
 
     def test_mime_type_strips_multiple_params(self):
@@ -366,7 +362,7 @@ class TestTestApp:
         def home(request: Request):
             return "# Home"
 
-        with test_app(app) as client:
+        with test_app(app) as _client:
             assert stopped == []
 
         assert stopped == [True]

@@ -128,7 +128,9 @@ class TestRequest:
         """Request.app raises RuntimeError when not bound."""
         raw = GeminiRequest.from_line("gemini://example.com/page")
         request = Request(raw)
-        with pytest.raises(RuntimeError, match="Request is not bound to an application"):
+        with pytest.raises(
+            RuntimeError, match="Request is not bound to an application"
+        ):
             _ = request.app
 
     def test_app_property_returns_app_when_bound(self):
