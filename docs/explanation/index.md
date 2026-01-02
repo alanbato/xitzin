@@ -26,7 +26,7 @@ Understanding the concepts behind Xitzin and the Gemini protocol.
 
     ---
 
-    How Xitzin differs from FastAPI.
+    How Xitzin compares to FastAPI.
 
 -   [**Gemtext Format**](gemtext-format.md)
 

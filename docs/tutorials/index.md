@@ -7,7 +7,7 @@ Welcome to the Xitzin tutorials! These step-by-step guides will teach you how to
 Before starting, make sure you have:
 
 - [Installed Xitzin](../getting-started/installation.md)
-- A Gemini client like [Lagrange](https://gmi.skyjake.fi/lagrange/)
+- A Gemini client like [Astronomo](https://github.com/alanbato/astronom)
 - Basic Python knowledge
 - Familiarity with web frameworks (Flask, FastAPI, or Django)
 

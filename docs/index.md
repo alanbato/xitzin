@@ -1,8 +1,8 @@
 # Xitzin
 
-**FastAPI for the Geminispace**
+**Application Framework for the Geminispace**
 
-Xitzin is a Gemini Application Framework that brings the developer experience of FastAPI to the [Gemini protocol](https://geminiprotocol.net/). Build Gemini capsules with familiar patterns: decorators for routing, type-annotated path parameters, and Pydantic-powered validation.
+Xitzin is a Gemini Application Framework that brings a modern Python developer experience to the [Gemini protocol](https://geminiprotocol.net/). Build Gemini capsules with familiar patterns: decorators for routing, type-annotated path parameters, and Pydantic-powered validation.
 
 ## Quick Example
 

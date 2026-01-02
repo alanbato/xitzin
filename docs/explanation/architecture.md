@@ -155,7 +155,7 @@ In-memory testing utilities:
 
 ### Decorator-Based Registration
 
-Routes are registered via decorators, similar to FastAPI:
+Routes are registered via decorators:
 
 ```python
 @app.gemini("/path")

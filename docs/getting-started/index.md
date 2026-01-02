@@ -15,7 +15,7 @@ Gemini is a lightweight internet protocol that sits between Gopher and the Web. 
 ## Prerequisites
 
 - Python 3.10 or higher
-- A Gemini client (we recommend [Lagrange](https://gmi.skyjake.fi/lagrange/))
+- A Gemini client (we recommend [Astronomo](https://github.com/alanbato/astronomo/))
 - Basic familiarity with Python web frameworks
 
 ## Quick Navigation

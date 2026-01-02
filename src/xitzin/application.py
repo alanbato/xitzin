@@ -46,7 +46,7 @@ class AppState:
 class Xitzin:
     """Gemini Application Framework.
 
-    Xitzin provides a FastAPI-inspired interface for building Gemini applications.
+    Xitzin provides an interface for building Gemini applications.
 
     Example:
         app = Xitzin(title="My Capsule")
@@ -202,9 +202,7 @@ class Xitzin:
         self._shutdown_handlers.append(handler)
         return handler
 
-    def middleware(
-        self, handler: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def middleware(self, handler: Callable[..., Any]) -> Callable[..., Any]:
         """Register middleware as a decorator.
 
         Middleware receives (request, call_next) and must call call_next
@@ -257,7 +255,9 @@ class Xitzin:
 
             # Handle input flow
             if route.input_prompt and not request.query:
-                return Input(route.input_prompt, route.sensitive_input).to_gemini_response()
+                return Input(
+                    route.input_prompt, route.sensitive_input
+                ).to_gemini_response()
 
             # Add query to params for input routes
             if route.input_prompt and request.query:
@@ -280,6 +280,7 @@ class Xitzin:
         except Exception as e:
             # Log the error and return a generic failure
             import traceback
+
             traceback.print_exc()
             return GeminiResponse(
                 status=StatusCode.TEMPORARY_FAILURE,
@@ -346,9 +347,14 @@ class Xitzin:
                     valid_days=365,
                 )
                 import ssl
+
                 with (
-                    tempfile.NamedTemporaryFile(suffix=".pem", delete=False, mode="wb") as cf,
-                    tempfile.NamedTemporaryFile(suffix=".key", delete=False, mode="wb") as kf,
+                    tempfile.NamedTemporaryFile(
+                        suffix=".pem", delete=False, mode="wb"
+                    ) as cf,
+                    tempfile.NamedTemporaryFile(
+                        suffix=".key", delete=False, mode="wb"
+                    ) as kf,
                 ):
                     cf.write(cert_pem)
                     kf.write(key_pem)

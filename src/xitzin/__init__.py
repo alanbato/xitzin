@@ -1,6 +1,6 @@
 """Xitzin - A Gemini Application Framework.
 
-Xitzin is a FastAPI-inspired framework for building Gemini protocol applications.
+Xitzin is a framework for building Gemini protocol applications.
 It uses Nauyaca for protocol communication and Pydantic for data validation.
 
 Example:

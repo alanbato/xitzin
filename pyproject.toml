@@ -1,7 +1,7 @@
 [project]
 name = "xitzin"
 version = "0.1.0"
-description = "A Gemini Application Framework inspired by FastAPI"
+description = "A Gemini Application Framework"
 readme = "README.md"
 authors = [
     { name = "Alan Velasco", email = "alanvelasco.a@gmail.com" }
