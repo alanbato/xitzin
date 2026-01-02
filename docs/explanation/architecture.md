@@ -223,5 +223,4 @@ user = request.state.user
 Xitzin builds on:
 
 - **Nauyaca**: Gemini protocol implementation
-- **Pydantic**: Data validation
 - **Jinja2**: Template engine

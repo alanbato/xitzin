@@ -2,7 +2,7 @@
 
 **Application Framework for the Geminispace**
 
-Xitzin brings a modern Python developer experience to the [Gemini protocol](https://geminiprotocol.net/). Build Gemini capsules with familiar patterns: decorators for routing, type-annotated path parameters, and Pydantic-powered validation.
+Xitzin brings a modern Python developer experience to the [Gemini protocol](https://geminiprotocol.net/). Build Gemini capsules with familiar patterns: decorators for routing and type-annotated path parameters.
 
 ```python
 from xitzin import Xitzin, Request

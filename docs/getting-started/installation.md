@@ -44,7 +44,6 @@ Open a Python interpreter and verify the installation:
 Xitzin automatically installs its core dependencies:
 
 - **[Nauyaca](https://github.com/alanbato/nauyaca)**: Gemini protocol implementation
-- **[Pydantic](https://docs.pydantic.dev/)**: Data validation
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine
 
 ## Next Steps
