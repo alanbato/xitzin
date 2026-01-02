@@ -1,0 +1,32 @@
+[project]
+name = "xitzin"
+version = "0.1.0"
+description = "A Gemini Application Framework inspired by FastAPI"
+readme = "README.md"
+authors = [
+    { name = "Alan Velasco", email = "alanvelasco.a@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "jinja2>=3.1.0",
+    "nauyaca>=0.3.2",
+    "pydantic>=2.12.5",
+    "rich>=14.2.0",
+    "typing-extensions>=4.15.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.10,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.10",
+    "ty>=0.0.8",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "pymdown-extensions>=10.20",
+]
