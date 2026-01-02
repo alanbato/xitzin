@@ -106,3 +106,68 @@ Port: {request.port}
 Query: {request.query}
 """
 ```
+
+## Name Routes
+
+Give routes a name for URL reversing:
+
+```python
+# Auto-named after the function (name="home")
+@app.gemini("/")
+def home(request: Request):
+    return "# Home"
+
+# Explicit name
+@app.gemini("/user/{username}", name="user_profile")
+def profile(request: Request, username: str):
+    return f"# {username}'s Profile"
+
+# Input routes can be named too
+@app.input("/search", prompt="Query:", name="search")
+def search(request: Request, query: str):
+    return f"Results: {query}"
+```
+
+By default, routes are named after their handler function. Use the `name=` parameter to override.
+
+## Reverse URLs
+
+Build URLs from route names using `app.reverse()`:
+
+```python
+@app.gemini("/")
+def home(request: Request):
+    # Build URL to another route
+    profile_url = request.app.reverse("user_profile", username="alice")
+    return f"# Home\n\n=> {profile_url} Visit Alice's Profile"
+
+@app.gemini("/user/{username}", name="user_profile")
+def profile(request: Request, username: str):
+    return f"# {username}"
+```
+
+This avoids hardcoding URLs throughout your application. If the path changes, only the route definition needs updating.
+
+### Multiple Parameters
+
+```python
+@app.gemini("/post/{year}/{month}/{slug}", name="blog_post")
+def post(request: Request, year: int, month: int, slug: str):
+    return f"# {slug}"
+
+# Build URL with all parameters
+url = app.reverse("blog_post", year=2024, month=12, slug="hello-world")
+# Returns: "/post/2024/12/hello-world"
+```
+
+### Error Handling
+
+```python
+# Missing route name raises ValueError
+app.reverse("nonexistent")
+# ValueError: No route named 'nonexistent'. Available routes: home, user_profile
+
+# Missing required parameter raises ValueError
+app.reverse("user_profile")
+# ValueError: Route 'user_profile' missing required parameters: username
+```

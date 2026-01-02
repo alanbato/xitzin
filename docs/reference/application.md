@@ -12,6 +12,8 @@ The core application class that handles routing, middleware, and server lifecycl
         - __init__
         - state
         - template
+        - reverse
+        - redirect
         - gemini
         - input
         - on_startup

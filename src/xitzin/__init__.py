@@ -1,7 +1,7 @@
 """Xitzin - A Gemini Application Framework.
 
 Xitzin is a framework for building Gemini protocol applications.
-It uses Nauyaca for protocol communication and Pydantic for data validation.
+It uses Nauyaca for Gemini protocol communication.
 
 Example:
     from xitzin import Xitzin, Request
@@ -40,7 +40,7 @@ from .exceptions import (
     TemporaryFailure,
 )
 from .requests import Request
-from .responses import Input, Redirect, Response
+from .responses import Input, Link, Redirect, Response
 
 __all__ = [
     # Main application
@@ -50,6 +50,7 @@ __all__ = [
     "Response",
     "Input",
     "Redirect",
+    "Link",
     # Exceptions
     "GeminiException",
     "InputRequired",

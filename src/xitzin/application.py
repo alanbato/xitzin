@@ -16,7 +16,7 @@ from nauyaca.protocol.status import StatusCode
 
 from .exceptions import GeminiException, NotFound
 from .requests import Request
-from .responses import Input, convert_response
+from .responses import Input, Redirect, convert_response
 from .routing import Route, Router
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ class Xitzin:
         """Initialize the template engine."""
         from .templating import TemplateEngine
 
-        self._templates = TemplateEngine(templates_dir)
+        self._templates = TemplateEngine(templates_dir, app=self)
 
     @property
     def state(self) -> AppState:
@@ -117,11 +117,54 @@ class Xitzin:
             raise RuntimeError(msg)
         return self._templates.render(name, **context)
 
-    def gemini(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def reverse(self, name: str, **params: Any) -> str:
+        """Build URL for a named route.
+
+        Args:
+            name: Route name.
+            **params: Path parameters.
+
+        Returns:
+            URL path string.
+
+        Raises:
+            ValueError: If route name not found or parameters missing.
+
+        Example:
+            url = app.reverse("user_profile", username="alice")
+            # Returns "/user/alice"
+        """
+        return self._router.reverse(name, **params)
+
+    def redirect(
+        self, name: str, *, permanent: bool = False, **params: Any
+    ) -> Redirect:
+        """Create a redirect to a named route.
+
+        Args:
+            name: Route name.
+            permanent: If True, use status 31 (permanent redirect).
+            **params: Path parameters.
+
+        Returns:
+            Redirect response object.
+
+        Example:
+            @app.gemini("/old-profile/{username}")
+            def old_profile(request: Request, username: str):
+                return app.redirect("user_profile", username=username, permanent=True)
+        """
+        url = self.reverse(name, **params)
+        return Redirect(url, permanent=permanent)
+
+    def gemini(
+        self, path: str, *, name: str | None = None
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a route handler.
 
         Args:
             path: URL path pattern (e.g., "/user/{id}").
+            name: Optional route name for URL reversing. Defaults to function name.
 
         Returns:
             Decorator function.
@@ -131,20 +174,25 @@ class Xitzin:
             def home(request: Request):
                 return "# Home"
 
-            @app.gemini("/user/{username}")
+            @app.gemini("/user/{username}", name="user_profile")
             def profile(request: Request, username: str):
                 return f"# {username}"
         """
 
         def decorator(handler: Callable[..., Any]) -> Callable[..., Any]:
-            route = Route(path, handler)
+            route = Route(path, handler, name=name)
             self._router.add_route(route)
             return handler
 
         return decorator
 
     def input(
-        self, path: str, *, prompt: str, sensitive: bool = False
+        self,
+        path: str,
+        *,
+        prompt: str,
+        sensitive: bool = False,
+        name: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register an input route (status 10/11 flow).
 
@@ -156,18 +204,21 @@ class Xitzin:
             path: URL path pattern.
             prompt: Prompt text shown to the user.
             sensitive: If True, use status 11 (sensitive input).
+            name: Optional route name for URL reversing. Defaults to function name.
 
         Returns:
             Decorator function.
 
         Example:
-            @app.input("/search", prompt="Enter search query:")
+            @app.input("/search", prompt="Enter search query:", name="search")
             def search(request: Request, query: str):
                 return f"# Results for: {query}"
         """
 
         def decorator(handler: Callable[..., Any]) -> Callable[..., Any]:
-            route = Route(path, handler, input_prompt=prompt, sensitive_input=sensitive)
+            route = Route(
+                path, handler, name=name, input_prompt=prompt, sensitive_input=sensitive
+            )
             self._router.add_route(route)
             return handler
 

@@ -8,7 +8,7 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     ---
 
-    Define routes, extract path parameters, and handle different URL patterns.
+    Define routes, extract path parameters, name routes, and reverse URLs.
 
 -   [**Input Handling**](input-handling.md)
 
@@ -20,7 +20,7 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     ---
 
-    Return different response types: success, input, redirect.
+    Return different response types: success, input, redirect, and build links.
 
 -   [**Templates**](templates.md)
 

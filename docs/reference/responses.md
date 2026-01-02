@@ -20,6 +20,12 @@ Redirect to another URL (status 30/31).
 
 ::: xitzin.responses.Redirect
 
+## Link
+
+Build Gemtext link lines.
+
+::: xitzin.responses.Link
+
 ## Response Conversion
 
 ::: xitzin.responses.convert_response

@@ -7,9 +7,12 @@ rendering Gemtext (.gmi) templates.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader
+
+if TYPE_CHECKING:
+    from .application import Xitzin
 
 from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
@@ -132,9 +135,10 @@ class GemtextEnvironment(Environment):
     - Disables HTML autoescaping (not needed for Gemtext)
     - Trims blocks and strips leading whitespace
     - Adds Gemtext-specific filters
+    - Provides a `reverse()` global function for URL reversing (when app is provided)
     """
 
-    def __init__(self, templates_dir: Path) -> None:
+    def __init__(self, templates_dir: Path, app: Xitzin | None = None) -> None:
         loader = FileSystemLoader(str(templates_dir))
         super().__init__(
             loader=loader,
@@ -150,6 +154,10 @@ class GemtextEnvironment(Environment):
         self.filters["quote"] = _quote_filter
         self.filters["preformat"] = _preformat_filter
 
+        # Register reverse() global if app is provided
+        if app is not None:
+            self.globals["reverse"] = app.reverse
+
 
 class TemplateEngine:
     """High-level template rendering interface.
@@ -157,13 +165,18 @@ class TemplateEngine:
     Example:
         engine = TemplateEngine(Path("templates"))
         response = engine.render("page.gmi", title="Welcome", items=["a", "b"])
+
+    With app integration (enables reverse() in templates):
+        engine = TemplateEngine(Path("templates"), app=app)
+        # In templates: {{ reverse("user_profile", username="alice") | link("Profile") }}
     """
 
-    def __init__(self, templates_dir: Path) -> None:
+    def __init__(self, templates_dir: Path, app: Xitzin | None = None) -> None:
         """Create a template engine.
 
         Args:
             templates_dir: Directory containing template files.
+            app: Optional Xitzin app instance for URL reversing in templates.
 
         Raises:
             ValueError: If templates_dir doesn't exist.
@@ -172,7 +185,7 @@ class TemplateEngine:
             msg = f"Templates directory does not exist: {templates_dir}"
             raise ValueError(msg)
 
-        self._env = GemtextEnvironment(templates_dir)
+        self._env = GemtextEnvironment(templates_dir, app=app)
 
     def render(self, template_name: str, **context: Any) -> TemplateResponse:
         """Render a template file.

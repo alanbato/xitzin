@@ -58,6 +58,22 @@ Xitzin provides filters for generating Gemtext:
 {# Output: => /home #}
 ```
 
+### reverse - URL Reversing
+
+The `reverse()` function builds URLs from route names:
+
+```jinja
+{# Link to a named route #}
+{{ reverse("user_profile", username="alice") | link("Alice's Profile") }}
+{# Output: => /user/alice Alice's Profile #}
+
+{# Multiple parameters #}
+{{ reverse("blog_post", year=2024, month=12, slug="hello") }}
+{# Output: /post/2024/12/hello #}
+```
+
+This keeps your templates maintainable - if a route path changes, only the route definition needs updating.
+
 ### heading - Generate Headings
 
 ```jinja
@@ -194,9 +210,32 @@ content = engine.render_string(
 )
 ```
 
+## Dynamic Navigation with reverse()
+
+Build navigation menus that don't break when URLs change:
+
+```jinja
+{# templates/base.gmi #}
+# {{ title }}
+
+{% block content %}{% endblock %}
+
+---
+## Navigation
+{{ reverse("home") | link("Home") }}
+{{ reverse("about") | link("About") }}
+{% if user %}
+{{ reverse("user_profile", username=user.username) | link("My Profile") }}
+{{ reverse("logout") | link("Logout") }}
+{% else %}
+{{ reverse("login") | link("Login") }}
+{% endif %}
+```
+
 ## Best Practices
 
 1. **Use templates for complex pages** - Keep handlers clean
 2. **Use filters for Gemtext** - They handle formatting correctly
 3. **Create a base template** - For consistent navigation
 4. **Pass minimal context** - Only what the template needs
+5. **Use reverse() for links** - Avoid hardcoded URLs

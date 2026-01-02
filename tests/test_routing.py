@@ -237,9 +237,23 @@ class TestRouteCallHandler:
         assert result == "No params"
 
     def test_repr(self):
-        """Route repr shows the path."""
+        """Route repr shows the path and name."""
         route = Route("/user/{id}", lambda r, id: id)
-        assert repr(route) == "Route('/user/{id}')"
+        assert repr(route) == "Route('/user/{id}', name='<lambda>')"
+
+    def test_repr_with_named_function(self):
+        """Route repr shows the path and function name."""
+
+        def user_profile(r, id):
+            return id
+
+        route = Route("/user/{id}", user_profile)
+        assert repr(route) == "Route('/user/{id}', name='user_profile')"
+
+    def test_repr_with_explicit_name(self):
+        """Route repr shows the path and explicit name."""
+        route = Route("/user/{id}", lambda r, id: id, name="user_detail")
+        assert repr(route) == "Route('/user/{id}', name='user_detail')"
 
 
 class TestRouteInputPrompt:
@@ -305,8 +319,8 @@ class TestRouter:
     def test_first_match_wins(self):
         """First matching route wins."""
         router = Router()
-        route1 = Route("/page", lambda r: "first")
-        route2 = Route("/page", lambda r: "second")
+        route1 = Route("/page", lambda r: "first", name="first_route")
+        route2 = Route("/page", lambda r: "second", name="second_route")
         router.add_route(route1)
         router.add_route(route2)
 
@@ -316,8 +330,8 @@ class TestRouter:
     def test_more_specific_route_first(self):
         """More specific route wins when registered first."""
         router = Router()
-        specific = Route("/user/admin", lambda r: "admin")
-        generic = Route("/user/{id}", lambda r, id: id)
+        specific = Route("/user/admin", lambda r: "admin", name="admin_route")
+        generic = Route("/user/{id}", lambda r, id: id, name="user_route")
         router.add_route(specific)
         router.add_route(generic)
 
@@ -332,8 +346,8 @@ class TestRouter:
     def test_iter(self):
         """Router is iterable."""
         router = Router()
-        route1 = Route("/a", lambda r: "a")
-        route2 = Route("/b", lambda r: "b")
+        route1 = Route("/a", lambda r: "a", name="route_a")
+        route2 = Route("/b", lambda r: "b", name="route_b")
         router.add_route(route1)
         router.add_route(route2)
 
@@ -345,10 +359,10 @@ class TestRouter:
         router = Router()
         assert len(router) == 0
 
-        router.add_route(Route("/a", lambda r: "a"))
+        router.add_route(Route("/a", lambda r: "a", name="route_a"))
         assert len(router) == 1
 
-        router.add_route(Route("/b", lambda r: "b"))
+        router.add_route(Route("/b", lambda r: "b", name="route_b"))
         assert len(router) == 2
 
     def test_empty_router_match(self):

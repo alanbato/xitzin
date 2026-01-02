@@ -71,6 +71,82 @@ def moved(request: Request):
 - `permanent=False` (default): Status 30 (temporary redirect)
 - `permanent=True`: Status 31 (permanent redirect)
 
+### Redirect to Named Routes
+
+Use `app.redirect()` to redirect to a named route:
+
+```python
+@app.gemini("/old-profile/{username}")
+def old_profile(request: Request, username: str):
+    # Redirect to the new profile route
+    return request.app.redirect("user_profile", username=username)
+
+@app.gemini("/user/{username}", name="user_profile")
+def profile(request: Request, username: str):
+    return f"# {username}'s Profile"
+```
+
+This is equivalent to:
+
+```python
+return Redirect(app.reverse("user_profile", username=username))
+```
+
+For permanent redirects:
+
+```python
+return request.app.redirect("user_profile", username=username, permanent=True)
+```
+
+## Build Links
+
+Use the `Link` class to build Gemtext link lines:
+
+```python
+from xitzin import Link
+
+@app.gemini("/")
+def home(request: Request):
+    links = [
+        Link("/about", "About Us"),
+        Link("/contact", "Contact"),
+        Link("/blog"),  # No label
+    ]
+    return "# Home\n\n" + "\n".join(str(link) for link in links)
+```
+
+Output:
+
+```
+# Home
+
+=> /about About Us
+=> /contact Contact
+=> /blog
+```
+
+### Link to Named Routes
+
+Use `Link.to_route()` to build links using route names:
+
+```python
+from xitzin import Link
+
+@app.gemini("/", name="home")
+def home(request: Request):
+    links = [
+        Link.to_route(request.app, "user_profile", username="alice", label="Alice"),
+        Link.to_route(request.app, "user_profile", username="bob", label="Bob"),
+    ]
+    return "# Users\n\n" + "\n".join(str(link) for link in links)
+
+@app.gemini("/user/{username}", name="user_profile")
+def profile(request: Request, username: str):
+    # Link back to home
+    home_link = Link.to_route(request.app, "home", label="Back to Home")
+    return f"# {username}'s Profile\n\n{home_link}"
+```
+
 ## Tuple Response
 
 For full control, return a tuple:
@@ -125,3 +201,10 @@ def empty(request: Request):
 | `(body, status)` | Custom | Auto |
 | `(body, status, meta)` | Custom | Custom |
 | `None` | 20 | Empty |
+
+## Helper Classes
+
+| Class | Purpose |
+|-------|---------|
+| `Link(url, label)` | Build Gemtext link lines (`=> url label`) |
+| `Link.to_route(app, name, **params)` | Build link to named route |

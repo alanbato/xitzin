@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **URL Reversing**: Build URLs from route names instead of hardcoding paths
+  - Routes are auto-named after their handler function, or explicitly via `name=` parameter
+  - `app.reverse("route_name", **params)` builds URLs from route names
+  - `app.redirect("route_name", **params)` creates redirects to named routes
+  - `Link` class for building Gemtext link lines
+  - `Link.to_route(app, "route_name", **params)` builds links to named routes
+  - `reverse()` function available in templates: `{{ reverse("profile", username="alice") | link("Profile") }}`
+
 ## [0.1.0] - 2024
 
 ### Added
@@ -30,5 +40,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Dependencies
 
 - Nauyaca for Gemini protocol communication
-- Pydantic for data validation
 - Jinja2 for template rendering

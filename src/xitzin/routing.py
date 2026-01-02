@@ -33,6 +33,7 @@ class Route:
         path: str,
         handler: Callable[..., Any],
         *,
+        name: str | None = None,
         input_prompt: str | None = None,
         sensitive_input: bool = False,
     ) -> None:
@@ -41,11 +42,15 @@ class Route:
         Args:
             path: Path template with optional parameters (e.g., "/user/{id}").
             handler: The handler function to call.
+            name: Route name for URL reversing. Defaults to handler function name.
             input_prompt: If set, request input with this prompt before calling handler.
             sensitive_input: If True, use status 11 (sensitive input) instead of 10.
         """
         self.path = path
         self.handler = handler
+        self.name = (
+            name if name is not None else getattr(handler, "__name__", "<anonymous>")
+        )
         self.input_prompt = input_prompt
         self.sensitive_input = sensitive_input
 
@@ -157,8 +162,39 @@ class Route:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: self.handler(request, **params))
 
+    def reverse(self, **params: Any) -> str:
+        """Build URL from this route's path template.
+
+        Args:
+            **params: Path parameters to substitute.
+
+        Returns:
+            URL path string.
+
+        Raises:
+            ValueError: If required parameters are missing.
+
+        Example:
+            route = Route("/user/{username}", handler)
+            route.reverse(username="alice")  # Returns "/user/alice"
+        """
+        missing = set(self._param_names) - set(params.keys())
+        if missing:
+            raise ValueError(
+                f"Route '{self.name}' missing required parameters: {', '.join(sorted(missing))}"
+            )
+
+        url = self.path
+        for name in self._param_names:
+            value = str(params[name])
+            # Handle both {name} and {name:path} patterns
+            url = url.replace(f"{{{name}}}", value)
+            url = url.replace(f"{{{name}:path}}", value)
+
+        return url
+
     def __repr__(self) -> str:
-        return f"Route({self.path!r})"
+        return f"Route({self.path!r}, name={self.name!r})"
 
 
 class Router:
@@ -169,10 +205,22 @@ class Router:
 
     def __init__(self) -> None:
         self._routes: list[Route] = []
+        self._routes_by_name: dict[str, Route] = {}
 
     def add_route(self, route: Route) -> None:
-        """Add a route to the router."""
+        """Add a route to the router.
+
+        Raises:
+            ValueError: If a route with the same name already exists.
+        """
+        if route.name in self._routes_by_name:
+            existing = self._routes_by_name[route.name]
+            raise ValueError(
+                f"Route name '{route.name}' already registered for path '{existing.path}'. "
+                f"Use the name= parameter to provide a unique name."
+            )
         self._routes.append(route)
+        self._routes_by_name[route.name] = route
 
     def match(self, path: str) -> tuple[Route, dict[str, Any]] | None:
         """Find a matching route and extract parameters.
@@ -188,6 +236,29 @@ class Router:
                 params = route.extract_params(path)
                 return route, params
         return None
+
+    def reverse(self, name: str, **params: Any) -> str:
+        """Build URL for a named route.
+
+        Args:
+            name: Route name.
+            **params: Path parameters.
+
+        Returns:
+            URL path string.
+
+        Raises:
+            ValueError: If route name not found or parameters missing.
+
+        Example:
+            router.reverse("user_profile", username="alice")
+            # Returns "/user/alice"
+        """
+        if name not in self._routes_by_name:
+            available = ", ".join(sorted(self._routes_by_name.keys()))
+            raise ValueError(f"No route named '{name}'. Available routes: {available}")
+        route = self._routes_by_name[name]
+        return route.reverse(**params)
 
     def __iter__(self):
         return iter(self._routes)

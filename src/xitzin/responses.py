@@ -13,6 +13,7 @@ from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
 if TYPE_CHECKING:
+    from .application import Xitzin
     from .requests import Request
 
 
@@ -86,6 +87,71 @@ class Redirect:
             else StatusCode.REDIRECT_TEMPORARY
         )
         return GeminiResponse(status=status, meta=self.url)
+
+
+@dataclass
+class Link:
+    """Build Gemtext link lines.
+
+    Generates link lines in the format: => URL [LABEL]
+
+    Example:
+        # Basic link
+        link = Link("/about", "About Us")
+        str(link)  # "=> /about About Us"
+
+        # Link without label
+        link = Link("/about")
+        str(link)  # "=> /about"
+
+        # Using with app.reverse()
+        link = Link(app.reverse("user_profile", username="alice"), "Alice's Profile")
+        str(link)  # "=> /user/alice Alice's Profile"
+
+        # Using to_route() classmethod
+        link = Link.to_route(app, "user_profile", username="alice", label="Alice's Profile")
+        str(link)  # "=> /user/alice Alice's Profile"
+    """
+
+    url: str
+    label: str | None = None
+
+    def to_gemtext(self) -> str:
+        """Generate Gemtext link line."""
+        if self.label:
+            return f"=> {self.url} {self.label}"
+        return f"=> {self.url}"
+
+    @classmethod
+    def to_route(
+        cls,
+        app: "Xitzin",
+        name: str,
+        *,
+        label: str | None = None,
+        **params: Any,
+    ) -> "Link":
+        """Create a link to a named route.
+
+        Args:
+            app: Xitzin application instance.
+            name: Route name.
+            label: Optional link label text.
+            **params: Path parameters for URL building.
+
+        Returns:
+            Link instance pointing to the route.
+
+        Example:
+            link = Link.to_route(app, "user_profile", username="alice", label="Profile")
+            str(link)  # "=> /user/alice Profile"
+        """
+        url = app.reverse(name, **params)
+        return cls(url, label)
+
+    def __str__(self) -> str:
+        """Return Gemtext representation."""
+        return self.to_gemtext()
 
 
 def convert_response(result: Any, request: Request | None = None) -> GeminiResponse:
