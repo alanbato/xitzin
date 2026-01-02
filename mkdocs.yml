@@ -95,19 +95,47 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Quick Start: quickstart.md
+  - Getting Started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
   - Tutorials:
       - tutorials/index.md
+      - Your First Capsule: tutorials/your-first-capsule.md
+      - Handling User Input: tutorials/handling-user-input.md
+      - User Authentication: tutorials/user-authentication.md
+      - Building a Guestbook: tutorials/building-a-guestbook.md
   - How-to Guides:
       - how-to/index.md
-  - Reference:
-      - reference/index.md
+      - Routing: how-to/routing.md
+      - Input Handling: how-to/input-handling.md
+      - Responses: how-to/responses.md
+      - Templates: how-to/templates.md
+      - Middleware: how-to/middleware.md
+      - Authentication: how-to/authentication.md
+      - Error Handling: how-to/error-handling.md
+      - Testing: how-to/testing.md
+      - Deployment: how-to/deployment.md
   - Explanation:
       - explanation/index.md
       - Gemini Protocol: explanation/gemini-protocol.md
       - Architecture: explanation/architecture.md
+      - Request Lifecycle: explanation/request-lifecycle.md
+      - Comparison to FastAPI: explanation/comparison-to-fastapi.md
+      - Gemtext Format: explanation/gemtext-format.md
+  - Reference:
+      - reference/index.md
+      - Application: reference/application.md
+      - Requests: reference/requests.md
+      - Responses: reference/responses.md
+      - Routing: reference/routing.md
+      - Exceptions: reference/exceptions.md
+      - Middleware: reference/middleware.md
+      - Authentication: reference/auth.md
+      - Templating: reference/templating.md
+      - Testing: reference/testing.md
   - Changelog: changelog.md
+  - Contributing: contributing.md
 
 extra:
   social:
