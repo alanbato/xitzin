@@ -36,6 +36,9 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+extra_css:
+  - stylesheets/extra.css
+
 plugins:
   - search
   - mkdocstrings:
@@ -72,7 +75,7 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.highlight:
-      pygments_lang_class: true
+      anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.mark
