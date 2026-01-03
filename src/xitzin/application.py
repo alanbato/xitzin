@@ -373,20 +373,21 @@ class Xitzin:
             keyfile: Path to TLS private key file.
         """
         from nauyaca.server.protocol import GeminiServerProtocol
+        from nauyaca.server.tls_protocol import TLSServerProtocol
         from nauyaca.security.certificates import generate_self_signed_cert
-        from nauyaca.security.tls import create_server_context
+        from nauyaca.security.pyopenssl_tls import create_pyopenssl_server_context
         import tempfile
 
         # Run startup handlers
         await self._run_startup()
 
         try:
-            # Create SSL context
+            # Create PyOpenSSL context (accepts any self-signed client cert)
             if certfile and keyfile:
-                ssl_context = create_server_context(
+                ssl_context = create_pyopenssl_server_context(
                     str(certfile),
                     str(keyfile),
-                    request_client_cert=False,
+                    request_client_cert=True,
                 )
             else:
                 # Generate self-signed cert for development
@@ -395,7 +396,6 @@ class Xitzin:
                     key_size=2048,
                     valid_days=365,
                 )
-                import ssl
 
                 with (
                     tempfile.NamedTemporaryFile(
@@ -410,20 +410,28 @@ class Xitzin:
                     cf.flush()
                     kf.flush()
                     print("[Xitzin] Using self-signed certificate (development only)")
-                    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                    ssl_context.load_cert_chain(cf.name, kf.name)
-                    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+                    ssl_context = create_pyopenssl_server_context(
+                        cf.name,
+                        kf.name,
+                        request_client_cert=True,
+                    )
 
             # Create handler that routes to our app
             async def handle(request: GeminiRequest) -> GeminiResponse:
                 return await self._handle_request(request)
 
+            # Use TLSServerProtocol for manual TLS handling (supports self-signed client certs)
+            def create_protocol() -> TLSServerProtocol:
+                return TLSServerProtocol(
+                    lambda: GeminiServerProtocol(handle, None),  # type: ignore[arg-type]
+                    ssl_context,
+                )
+
             loop = asyncio.get_running_loop()
             server = await loop.create_server(
-                lambda: GeminiServerProtocol(handle, None),  # type: ignore[arg-type]
+                create_protocol,
                 host,
                 port,
-                ssl=ssl_context,
             )
 
             print(f"[Xitzin] {self.title} v{self.version}")
