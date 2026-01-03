@@ -1,6 +1,6 @@
 [project]
 name = "xitzin"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Gemini Application Framework"
 readme = "README.md"
 license = { text = "MIT" }
