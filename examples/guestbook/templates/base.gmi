@@ -1,0 +1,11 @@
+{{ title | heading(1) }}
+
+{{ content }}
+
+---
+
+{{ "/" | link("Home") }}
+{{ "/entries" | link("View Guestbook") }}
+{% if show_sign %}
+{{ "/sign" | link("Sign the Guestbook") }}
+{% endif %}
