@@ -501,7 +501,8 @@ class Xitzin:
             async def handle(request: GeminiRequest) -> GeminiResponse:
                 return await self._handle_request(request)
 
-            # Use TLSServerProtocol for manual TLS handling (supports self-signed client certs)
+            # Use TLSServerProtocol for manual TLS handling
+            # (supports self-signed client certs)
             def create_protocol() -> TLSServerProtocol:
                 return TLSServerProtocol(
                     lambda: GeminiServerProtocol(handle, None),  # type: ignore[arg-type]

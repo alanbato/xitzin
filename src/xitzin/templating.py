@@ -168,7 +168,8 @@ class TemplateEngine:
 
     With app integration (enables reverse() in templates):
         engine = TemplateEngine(Path("templates"), app=app)
-        # In templates: {{ reverse("user_profile", username="alice") | link("Profile") }}
+        # In templates:
+        # {{ reverse("user_profile", username="alice") | link("Profile") }}
     """
 
     def __init__(self, templates_dir: Path, app: Xitzin | None = None) -> None:

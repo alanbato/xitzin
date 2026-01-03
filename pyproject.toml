@@ -3,16 +3,38 @@ name = "xitzin"
 version = "0.1.0"
 description = "A Gemini Application Framework"
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
     { name = "Alan Velasco", email = "alanvelasco.a@gmail.com" }
 ]
 requires-python = ">=3.10"
+keywords = ["gemini", "protocol", "framework", "async", "geminispace"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
 dependencies = [
     "jinja2>=3.1.0",
     "nauyaca>=0.3.2",
     "rich>=14.2.0",
     "typing-extensions>=4.15.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alanbato/xitzin"
+Documentation = "https://xitzin.readthedocs.io"
+Repository = "https://github.com/alanbato/xitzin.git"
+Issues = "https://github.com/alanbato/xitzin/issues"
+Changelog = "https://xitzin.readthedocs.io/changelog/"
 
 [build-system]
 requires = ["uv_build>=0.9.10,<0.10.0"]

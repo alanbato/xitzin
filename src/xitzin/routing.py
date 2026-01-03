@@ -180,8 +180,9 @@ class Route:
         """
         missing = set(self._param_names) - set(params.keys())
         if missing:
+            missing_params = ", ".join(sorted(missing))
             raise ValueError(
-                f"Route '{self.name}' missing required parameters: {', '.join(sorted(missing))}"
+                f"Route '{self.name}' missing required parameters: {missing_params}"
             )
 
         url = self.path
@@ -301,10 +302,12 @@ class Router:
         """
         if route.name in self._routes_by_name:
             existing = self._routes_by_name[route.name]
-            raise ValueError(
-                f"Route name '{route.name}' already registered for path '{existing.path}'. "
+            msg = (
+                f"Route name '{route.name}' already registered "
+                f"for path '{existing.path}'. "
                 f"Use the name= parameter to provide a unique name."
             )
+            raise ValueError(msg)
         self._routes.append(route)
         self._routes_by_name[route.name] = route
 

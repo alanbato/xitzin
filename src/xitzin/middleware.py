@@ -28,7 +28,9 @@ class BaseMiddleware(ABC):
 
     Example:
         class LoggingMiddleware(BaseMiddleware):
-            async def before_request(self, request: Request) -> Request | GeminiResponse | None:
+            async def before_request(
+                self, request: Request
+            ) -> Request | GeminiResponse | None:
                 print(f"Request: {request.path}")
                 return None  # Continue processing
 

@@ -109,7 +109,9 @@ class Link:
         str(link)  # "=> /user/alice Alice's Profile"
 
         # Using to_route() classmethod
-        link = Link.to_route(app, "user_profile", username="alice", label="Alice's Profile")
+        link = Link.to_route(
+            app, "user_profile", username="alice", label="Alice's Profile"
+        )
         str(link)  # "=> /user/alice Alice's Profile"
     """
 

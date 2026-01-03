@@ -51,7 +51,8 @@ class Request:
         @app.gemini("/user/{username}")
         def profile(request: Request, username: str):
             cert_id = request.client_cert_fingerprint
-            return f"# {username}'s Profile\\n\\nViewing as: {cert_id[:16] if cert_id else 'anonymous'}"
+            viewer = cert_id[:16] if cert_id else 'anonymous'
+            return f"# {username}'s Profile\\n\\nViewing as: {viewer}"
 
     Attributes:
         app: The Xitzin application instance.
