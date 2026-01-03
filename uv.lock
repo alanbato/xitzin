@@ -802,6 +802,7 @@ dependencies = [
     { name = "tomli-w" },
     { name = "typer" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/42/3a2b8c04e125d4e9054ece572d504ba2e43637a1bc4d9407718ee1fcfa58/nauyaca-0.5.0.tar.gz", hash = "sha256:c89d71af2f10d5410a76788f511bba6db9d04fc3fa2dd03df7acc8f5894d6718", size = 46636, upload-time = "2026-01-03T01:39:51.851Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/cf/6af5481f9cd54a316f9d55ca28dc4d81918b699aa448d3896608fe5d64ab/nauyaca-0.5.0-py3-none-any.whl", hash = "sha256:250336cd3bfc85885b87f12a3d85b4f2cf3d3076c29f3c59999c87b6fc2dfff4", size = 59363, upload-time = "2026-01-03T01:39:50.312Z" },
 ]
@@ -1321,7 +1322,7 @@ wheels = [
 
 [[package]]
 name = "xitzin"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
