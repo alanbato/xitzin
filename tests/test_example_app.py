@@ -22,7 +22,11 @@ def guestbook_app():
 
     importlib.reload(guestbook_module)
     guestbook_module.entries.clear()
-    return guestbook_module.app, guestbook_module.entries
+    return (
+        guestbook_module.app,
+        guestbook_module.entries,
+        guestbook_module.ADMIN_FINGERPRINTS,
+    )
 
 
 class TestGuestbookHome:
@@ -30,7 +34,7 @@ class TestGuestbookHome:
 
     def test_home_page_renders(self, guestbook_app):
         """Home page should render successfully."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
         response = client.get("/")
 
@@ -39,7 +43,7 @@ class TestGuestbookHome:
 
     def test_home_page_shows_recent_entries(self, guestbook_app):
         """Home page should show recent entries."""
-        app, entries = guestbook_app
+        app, entries, _fingerprints = guestbook_app
         entries.append(
             {
                 "name": "Alice",
@@ -61,7 +65,7 @@ class TestGuestbookEntries:
 
     def test_entries_empty(self, guestbook_app):
         """Entries page should indicate when empty."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
         response = client.get("/entries")
 
@@ -70,7 +74,7 @@ class TestGuestbookEntries:
 
     def test_entries_with_data(self, guestbook_app):
         """Entries page should list all entries."""
-        app, entries = guestbook_app
+        app, entries, _fingerprints = guestbook_app
         entries.extend(
             [
                 {
@@ -101,7 +105,7 @@ class TestGuestbookSigning:
 
     def test_sign_prompts_for_name_without_query(self, guestbook_app):
         """First request to sign should prompt for name."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
         auth_client = client.with_certificate("test-user-123")
 
@@ -111,7 +115,7 @@ class TestGuestbookSigning:
 
     def test_sign_flow_complete(self, guestbook_app):
         """Complete signing flow should add entry."""
-        app, entries = guestbook_app
+        app, entries, _fingerprints = guestbook_app
         client = TestClient(app)
         auth_client = client.with_certificate("test-user-123")
 
@@ -132,7 +136,7 @@ class TestGuestbookSigning:
 
     def test_sign_message_requires_certificate(self, guestbook_app):
         """Submitting a message requires a certificate."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
 
         # Try to submit without certificate
@@ -145,7 +149,7 @@ class TestGuestbookAdmin:
 
     def test_admin_requires_certificate(self, guestbook_app):
         """Admin panel requires a certificate."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
 
         response = client.get("/admin")
@@ -153,7 +157,7 @@ class TestGuestbookAdmin:
 
     def test_admin_requires_authorized_fingerprint(self, guestbook_app):
         """Admin panel requires authorized fingerprint."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
         client = TestClient(app)
 
         # Wrong certificate
@@ -163,7 +167,7 @@ class TestGuestbookAdmin:
 
     def test_admin_delete_entry(self, guestbook_app):
         """Admin should be able to delete entries."""
-        app, entries = guestbook_app
+        app, entries, admin_fingerprints = guestbook_app
         entries.append(
             {
                 "name": "Spam",
@@ -175,7 +179,7 @@ class TestGuestbookAdmin:
 
         client = TestClient(app)
         # Use the admin fingerprint from the app
-        auth_client = client.with_certificate("your-admin-fingerprint-here")
+        auth_client = client.with_certificate(admin_fingerprints[0])
 
         response = auth_client.get("/admin/delete/0")
         assert response.is_success
@@ -184,9 +188,9 @@ class TestGuestbookAdmin:
 
     def test_admin_delete_invalid_index(self, guestbook_app):
         """Deleting non-existent entry should show error."""
-        app, _entries = guestbook_app
+        app, _entries, admin_fingerprints = guestbook_app
         client = TestClient(app)
-        auth_client = client.with_certificate("your-admin-fingerprint-here")
+        auth_client = client.with_certificate(admin_fingerprints[0])
 
         response = auth_client.get("/admin/delete/999")
         assert response.is_success
@@ -198,7 +202,7 @@ class TestGuestbookLifecycle:
 
     def test_lifecycle_initializes_state(self, guestbook_app):
         """Test with startup/shutdown lifecycle."""
-        app, _entries = guestbook_app
+        app, _entries, _fingerprints = guestbook_app
 
         with run_with_lifecycle(app) as client:
             # Startup has run

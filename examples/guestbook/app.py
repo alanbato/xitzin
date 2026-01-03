@@ -29,7 +29,7 @@ app = Xitzin(
 entries: list[dict] = []
 
 # Admin fingerprints - replace with your own certificate fingerprints
-ADMIN_FINGERPRINTS = ["SHA256:TH+TAYql+N01ctTjNa7FdmWJGQHDHSKpTeHrhd3EjK4"]
+ADMIN_FINGERPRINTS = ["your-admin-fingerprint-here"]
 
 
 @app.on_startup
