@@ -21,6 +21,7 @@ Example:
 """
 
 from .application import Xitzin
+from .cgi import CGIConfig, CGIHandler, CGIScript
 from .exceptions import (
     BadRequest,
     CertificateNotAuthorized,
@@ -51,6 +52,10 @@ __all__ = [
     "Input",
     "Redirect",
     "Link",
+    # CGI support
+    "CGIConfig",
+    "CGIHandler",
+    "CGIScript",
     # Exceptions
     "GeminiException",
     "InputRequired",

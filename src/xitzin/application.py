@@ -17,7 +17,7 @@ from nauyaca.protocol.status import StatusCode
 from .exceptions import GeminiException, NotFound
 from .requests import Request
 from .responses import Input, Redirect, convert_response
-from .routing import Route, Router
+from .routing import MountedRoute, Route, Router
 
 if TYPE_CHECKING:
     from .templating import TemplateEngine
@@ -224,6 +224,70 @@ class Xitzin:
 
         return decorator
 
+    def mount(
+        self,
+        path: str,
+        handler: Callable[..., Any],
+        *,
+        name: str | None = None,
+    ) -> None:
+        """Mount a handler at a path prefix.
+
+        Mounted handlers receive requests for any path starting with the prefix.
+        The handler receives (request, path_info) where path_info is the
+        remaining path after the mount prefix.
+
+        Args:
+            path: Mount point prefix (e.g., "/cgi-bin", "/api").
+            handler: Callable that takes (request, path_info) and returns a response.
+            name: Optional name for the mount.
+
+        Example:
+            from xitzin.cgi import CGIHandler
+
+            app.mount("/cgi-bin", CGIHandler(script_dir="./scripts"))
+
+            # Requests to /cgi-bin/hello.py will call:
+            # handler(request, path_info="/hello.py")
+        """
+        mounted = MountedRoute(path, handler, name=name)
+        self._router.add_mounted_route(mounted)
+
+    def cgi(
+        self,
+        path: str,
+        script_dir: Path | str,
+        *,
+        name: str | None = None,
+        timeout: float = 30.0,
+        app_state_keys: list[str] | None = None,
+    ) -> None:
+        """Mount a CGI directory at a path prefix.
+
+        This is a convenience method that creates a CGIHandler and mounts it.
+
+        Args:
+            path: Mount point prefix (e.g., "/cgi-bin").
+            script_dir: Directory containing CGI scripts.
+            name: Optional name for the mount.
+            timeout: Maximum script execution time in seconds.
+            app_state_keys: App state keys to pass as XITZIN_* env vars.
+
+        Example:
+            app.cgi("/cgi-bin", "/srv/gemini/cgi-bin", timeout=30)
+
+            # Requests to /cgi-bin/hello.py execute:
+            # /srv/gemini/cgi-bin/hello.py
+        """
+        from .cgi import CGIConfig, CGIHandler
+
+        config = CGIConfig(
+            timeout=timeout,
+            app_state_keys=app_state_keys or [],
+        )
+        handler = CGIHandler(script_dir, config=config)
+        self.mount(path, handler, name=name)
+
     def on_startup(self, handler: Callable[[], Any]) -> Callable[[], Any]:
         """Register a startup event handler.
 
@@ -296,7 +360,24 @@ class Xitzin:
         request = Request(raw_request, self)
 
         try:
-            # Match route
+            # Check mounted routes first
+            mount_match = self._router.match_mount(request.path)
+            if mount_match is not None:
+                mounted_route, path_info = mount_match
+
+                # Build middleware chain for mounted handler
+                async def call_mounted_handler(req: Request) -> GeminiResponse:
+                    result = await mounted_route.call_handler(req, path_info)
+                    return convert_response(result, req)
+
+                # Apply middleware
+                handler = call_mounted_handler
+                for mw in reversed(self._middleware):
+                    handler = self._wrap_middleware(mw, handler)
+
+                return await handler(request)
+
+            # Match regular route
             match = self._router.match(request.path)
             if match is None:
                 raise NotFound(f"No route matches: {request.path}")

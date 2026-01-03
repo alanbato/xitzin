@@ -132,5 +132,18 @@ class Request:
         """SHA-256 fingerprint of the client certificate."""
         return self._raw_request.client_cert_fingerprint
 
+    @property
+    def remote_addr(self) -> str | None:
+        """The client's IP address, if available.
+
+        Note: This property returns the client IP address if it was set
+        by the server or middleware. In CGI context, this is passed to
+        scripts via the REMOTE_ADDR environment variable.
+
+        Returns:
+            The client IP address string, or None if not available.
+        """
+        return getattr(self._raw_request, "remote_addr", None)
+
     def __repr__(self) -> str:
         return f"Request({self._raw_request.raw_url!r})"

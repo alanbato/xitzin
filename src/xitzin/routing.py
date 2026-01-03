@@ -197,15 +197,101 @@ class Route:
         return f"Route({self.path!r}, name={self.name!r})"
 
 
+class MountedRoute:
+    """Route that delegates to a mounted handler at a path prefix.
+
+    Unlike regular Route, this matches path prefixes and passes the
+    remaining path to the handler, enabling directory-style mounting.
+
+    Example:
+        mounted = MountedRoute("/cgi-bin", cgi_handler)
+        if mounted.matches("/cgi-bin/script.py"):
+            # Calls handler with path_info="script.py"
+    """
+
+    def __init__(
+        self,
+        path_prefix: str,
+        handler: Callable[..., Any],
+        *,
+        name: str | None = None,
+    ) -> None:
+        """Create a mounted route.
+
+        Args:
+            path_prefix: Path prefix to match (e.g., "/cgi-bin").
+            handler: Handler that receives (request, path_info) where
+                path_info is the path after the prefix.
+            name: Optional name for the mount.
+        """
+        # Normalize prefix: ensure it starts with / and doesn't end with /
+        self.path_prefix = "/" + path_prefix.strip("/")
+        self.handler = handler
+        self.name = name or getattr(handler, "__name__", "<mounted>")
+        self._is_async = asyncio.iscoroutinefunction(handler) or (
+            hasattr(handler, "__call__")
+            and asyncio.iscoroutinefunction(handler.__call__)
+        )
+
+    def matches(self, path: str) -> bool:
+        """Check if this mount matches the given path.
+
+        Args:
+            path: URL path to match.
+
+        Returns:
+            True if path starts with this mount's prefix.
+        """
+        # Exact match or prefix with /
+        return path == self.path_prefix or path.startswith(self.path_prefix + "/")
+
+    def extract_path_info(self, path: str) -> str:
+        """Extract the path info (remaining path after prefix).
+
+        Args:
+            path: Full URL path.
+
+        Returns:
+            The path after the mount prefix.
+        """
+        if path == self.path_prefix:
+            return ""
+        # Remove prefix, keep the leading /
+        return path[len(self.path_prefix) :]
+
+    async def call_handler(self, request: Request, path_info: str) -> Any:
+        """Call the handler with the request and path info.
+
+        Args:
+            request: The current request.
+            path_info: Path after the mount prefix.
+
+        Returns:
+            The handler's return value.
+        """
+        if self._is_async:
+            return await self.handler(request, path_info)
+        # Wrap sync handler in executor to avoid blocking
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, lambda: self.handler(request, path_info)
+        )
+
+    def __repr__(self) -> str:
+        return f"MountedRoute({self.path_prefix!r}, name={self.name!r})"
+
+
 class Router:
     """Collection of routes with matching logic.
 
     Routes are matched in registration order; first match wins.
+    Mounted routes are checked before regular routes.
     """
 
     def __init__(self) -> None:
         self._routes: list[Route] = []
         self._routes_by_name: dict[str, Route] = {}
+        self._mounted_routes: list[MountedRoute] = []
 
     def add_route(self, route: Route) -> None:
         """Add a route to the router.
@@ -221,6 +307,31 @@ class Router:
             )
         self._routes.append(route)
         self._routes_by_name[route.name] = route
+
+    def add_mounted_route(self, route: MountedRoute) -> None:
+        """Add a mounted route to the router.
+
+        Mounted routes are checked before regular routes.
+
+        Args:
+            route: The mounted route to add.
+        """
+        self._mounted_routes.append(route)
+
+    def match_mount(self, path: str) -> tuple[MountedRoute, str] | None:
+        """Find a matching mounted route and extract path info.
+
+        Args:
+            path: URL path to match.
+
+        Returns:
+            Tuple of (mounted_route, path_info) if found, None otherwise.
+        """
+        for mounted in self._mounted_routes:
+            if mounted.matches(path):
+                path_info = mounted.extract_path_info(path)
+                return mounted, path_info
+        return None
 
     def match(self, path: str) -> tuple[Route, dict[str, Any]] | None:
         """Find a matching route and extract parameters.
