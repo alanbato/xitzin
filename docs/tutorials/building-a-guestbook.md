@@ -1,14 +1,22 @@
 # Building a Guestbook
 
-In this tutorial, you'll build a complete guestbook application that combines everything you've learned: routing, templates, user input, and certificate authentication.
+In this tutorial, you'll build a complete guestbook application that combines everything you've learned: routing, user input, and certificate authentication.
+
+!!! tip "Complete Example Available"
+    The complete working code for this tutorial is available in `examples/guestbook/`. You can run it directly:
+
+    ```bash
+    cd examples/guestbook
+    uv run python app.py
+    ```
 
 ## What You'll Build
 
 - A public guestbook that anyone can read
 - Authenticated signing (requires certificate)
 - Admin controls for deleting entries
-- Templates for consistent styling
 - Middleware for logging
+- Lifecycle events for initialization
 
 ## Project Structure
 
@@ -16,12 +24,8 @@ In this tutorial, you'll build a complete guestbook application that combines ev
 guestbook/
 ├── app.py              # Main application
 ├── templates/
-│   ├── base.gmi        # Base template
-│   ├── home.gmi        # Home page
-│   ├── entries.gmi     # Guestbook entries
-│   └── admin.gmi       # Admin page
-├── cert.pem            # TLS certificate
-└── key.pem             # TLS private key
+│   └── base.gmi        # Base template (optional)
+└── README.md
 ```
 
 ## Step 1: Project Setup
@@ -36,27 +40,9 @@ uv init
 uv add xitzin
 ```
 
-## Step 2: Create Base Template
+## Step 2: Create the Application
 
-Create `templates/base.gmi`:
-
-```jinja
-{{ title | heading(1) }}
-
-{{ content }}
-
----
-
-{{ "/" | link("Home") }}
-{{ "/entries" | link("View Guestbook") }}
-{% if show_sign %}
-{{ "/sign" | link("Sign the Guestbook") }}
-{% endif %}
-```
-
-## Step 3: Create the Application
-
-Create `app.py`:
+Create `app.py` with the basic structure:
 
 ```python
 from datetime import datetime
@@ -64,10 +50,10 @@ from pathlib import Path
 
 from xitzin import Xitzin, Request
 from xitzin.auth import (
+    get_identity,
+    optional_certificate,
     require_certificate,
     require_fingerprint,
-    optional_certificate,
-    get_identity,
 )
 
 app = Xitzin(
@@ -75,363 +61,21 @@ app = Xitzin(
     templates_dir=Path(__file__).parent / "templates",
 )
 
-# In-memory storage (use a database in production!)
-entries = []
+# Storage (in production, use a database!)
+entries: list[dict] = []
 
-# Admin fingerprints (replace with your own)
-ADMIN_FINGERPRINTS = [
-    "your-admin-fingerprint-here",
-]
-
-
-@app.gemini("/")
-@optional_certificate
-def home(request: Request):
-    identity = request.state.identity
-    recent_count = min(len(entries), 3)
-
-    content = f"""Welcome to my guestbook!
-
-{recent_count} recent entries:
-
-"""
-
-    for entry in entries[-3:]:
-        content += f"* {entry['name']}: {entry['message'][:50]}...\n"
-
-    content += """
-=> /entries View all entries
-=> /sign Sign the guestbook
-"""
-
-    if identity:
-        content += f"\nSigned in as: {identity.short_id}"
-
-    return app.template(
-        "base.gmi",
-        title="Guestbook",
-        content=content,
-        show_sign=True,
-    )
-
-
-@app.gemini("/entries")
-def view_entries(request: Request):
-    if not entries:
-        content = "No entries yet. Be the first to sign!"
-    else:
-        lines = []
-        for i, entry in enumerate(reversed(entries)):
-            lines.append(f"## {entry['name']}")
-            lines.append(f"> {entry['message']}")
-            lines.append(f"Signed on {entry['date']}")
-            lines.append("")
-        content = "\n".join(lines)
-
-    return app.template(
-        "base.gmi",
-        title="Guestbook Entries",
-        content=content,
-        show_sign=True,
-    )
-
-
-@app.gemini("/sign")
-@require_certificate
-def sign_start(request: Request):
-    identity = get_identity(request)
-
-    content = f"""You're about to sign the guestbook.
-
-Your signature ID: {identity.short_id}
-
-=> /sign/name Continue
-"""
-
-    return app.template(
-        "base.gmi",
-        title="Sign Guestbook",
-        content=content,
-        show_sign=False,
-    )
-
-
-@app.input("/sign/name", prompt="Enter your display name:")
-@require_certificate
-def sign_name(request: Request, query: str):
-    identity = get_identity(request)
-
-    # Store name temporarily in app state
-    if not hasattr(app.state, "pending_signs"):
-        app.state.pending_signs = {}
-
-    app.state.pending_signs[identity.fingerprint] = query
-
-    content = f"""Name saved: {query}
-
-=> /sign/message Continue to write your message
-"""
-
-    return app.template(
-        "base.gmi",
-        title="Sign Guestbook",
-        content=content,
-        show_sign=False,
-    )
-
-
-@app.input("/sign/message", prompt="Write your message:")
-@require_certificate
-def sign_message(request: Request, query: str):
-    identity = get_identity(request)
-
-    # Get stored name
-    pending = getattr(app.state, "pending_signs", {})
-    name = pending.pop(identity.fingerprint, identity.short_id)
-
-    # Create entry
-    entry = {
-        "name": name,
-        "message": query,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "fingerprint": identity.fingerprint,
-    }
-    entries.append(entry)
-
-    content = f"""Thanks for signing, {name}!
-
-Your message has been added to the guestbook.
-
-=> /entries View all entries
-"""
-
-    return app.template(
-        "base.gmi",
-        title="Signed!",
-        content=content,
-        show_sign=True,
-    )
-
-
-@app.gemini("/admin")
-@require_fingerprint(*ADMIN_FINGERPRINTS)
-def admin(request: Request):
-    if not entries:
-        content = "No entries to manage."
-    else:
-        lines = ["Select an entry to delete:", ""]
-        for i, entry in enumerate(entries):
-            lines.append(f"=> /admin/delete/{i} [{i}] {entry['name']}: {entry['message'][:30]}...")
-        content = "\n".join(lines)
-
-    return app.template(
-        "base.gmi",
-        title="Admin Panel",
-        content=content,
-        show_sign=False,
-    )
-
-
-@app.gemini("/admin/delete/{entry_id}")
-@require_fingerprint(*ADMIN_FINGERPRINTS)
-def admin_delete(request: Request, entry_id: int):
-    if 0 <= entry_id < len(entries):
-        deleted = entries.pop(entry_id)
-        content = f"""Entry deleted:
-
-> {deleted['message'][:100]}
-
-=> /admin Back to Admin
-"""
-    else:
-        content = """Entry not found.
-
-=> /admin Back to Admin
-"""
-
-    return app.template(
-        "base.gmi",
-        title="Entry Deleted",
-        content=content,
-        show_sign=False,
-    )
-
-
-if __name__ == "__main__":
-    app.run()
+# Admin fingerprints - replace with your own certificate fingerprints
+ADMIN_FINGERPRINTS = ["SHA256:your-fingerprint-here"]
 ```
 
-## Step 4: Add Middleware
+## Step 3: Add Lifecycle Events
 
-Let's add logging and timing middleware:
-
-```python
-from xitzin.middleware import LoggingMiddleware, TimingMiddleware
-
-# Add at the top of app.py, after creating the app
-app.add_middleware(TimingMiddleware())
-app.add_middleware(LoggingMiddleware())
-```
-
-Or create custom middleware:
-
-```python
-@app.middleware
-async def count_requests(request: Request, call_next):
-    if not hasattr(app.state, "request_count"):
-        app.state.request_count = 0
-    app.state.request_count += 1
-
-    response = await call_next(request)
-    return response
-```
-
-## Step 5: Add Lifecycle Events
-
-Add startup and shutdown handlers:
+Initialize application state on startup:
 
 ```python
 @app.on_startup
 async def startup():
-    print("Guestbook starting up...")
-    # In production, connect to database here
-    app.state.pending_signs = {}
-
-@app.on_shutdown
-async def shutdown():
-    print(f"Guestbook shutting down. Total requests: {app.state.request_count}")
-    # In production, close database connections here
-```
-
-## Step 6: Write Tests
-
-Create `test_app.py`:
-
-```python
-from xitzin.testing import TestClient, test_app
-from app import app, entries
-
-def test_home_page():
-    client = TestClient(app)
-    response = client.get("/")
-
-    assert response.is_success
-    assert "Guestbook" in response.body
-
-
-def test_entries_empty():
-    entries.clear()
-    client = TestClient(app)
-    response = client.get("/entries")
-
-    assert response.is_success
-    assert "No entries yet" in response.body
-
-
-def test_sign_requires_certificate():
-    client = TestClient(app)
-    response = client.get("/sign")
-
-    assert response.is_certificate_required
-
-
-def test_sign_with_certificate():
-    entries.clear()
-    client = TestClient(app)
-    auth_client = client.with_certificate("test-user-123")
-
-    # Start signing
-    response = auth_client.get("/sign")
-    assert response.is_success
-
-    # Enter name
-    response = auth_client.get_input("/sign/name", "Test User")
-    assert response.is_success
-
-    # Enter message
-    response = auth_client.get_input("/sign/message", "Hello, world!")
-    assert response.is_success
-    assert "Thanks for signing" in response.body
-
-    # Verify entry was added
-    assert len(entries) == 1
-    assert entries[0]["name"] == "Test User"
-    assert entries[0]["message"] == "Hello, world!"
-
-
-def test_admin_requires_specific_fingerprint():
-    client = TestClient(app)
-
-    # No certificate
-    response = client.get("/admin")
-    assert response.status == 60
-
-    # Wrong certificate
-    auth_client = client.with_certificate("unauthorized-user")
-    response = auth_client.get("/admin")
-    assert response.status == 61  # Not Authorized
-
-
-def test_with_lifecycle():
-    entries.clear()
-
-    with test_app(app) as client:
-        # Startup has run
-        assert hasattr(app.state, "pending_signs")
-
-        # Make some requests
-        response = client.get("/")
-        assert response.is_success
-```
-
-Run tests:
-
-```bash
-uv run pytest test_app.py -v
-```
-
-## Step 7: Run the Application
-
-Generate certificates and run:
-
-```bash
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
-python app.py
-```
-
-## Complete Project Code
-
-Here's the final `app.py`:
-
-```python
-from datetime import datetime
-from pathlib import Path
-
-from xitzin import Xitzin, Request
-from xitzin.auth import (
-    require_certificate,
-    require_fingerprint,
-    optional_certificate,
-    get_identity,
-)
-from xitzin.middleware import LoggingMiddleware, TimingMiddleware
-
-app = Xitzin(
-    title="Guestbook",
-    templates_dir=Path(__file__).parent / "templates",
-)
-
-# Add middleware
-app.add_middleware(TimingMiddleware())
-app.add_middleware(LoggingMiddleware())
-
-# Storage
-entries = []
-ADMIN_FINGERPRINTS = ["your-admin-fingerprint-here"]
-
-
-@app.on_startup
-async def startup():
+    """Initialize application state on startup."""
     print("Guestbook starting up...")
     app.state.pending_signs = {}
     app.state.request_count = 0
@@ -439,18 +83,53 @@ async def startup():
 
 @app.on_shutdown
 async def shutdown():
+    """Clean up on shutdown."""
     print(f"Shutting down. Total requests: {app.state.request_count}")
+```
 
+## Step 4: Add Middleware
 
+Create custom middleware for logging and request counting:
+
+```python
 @app.middleware
-async def count_requests(request: Request, call_next):
+async def log_and_count_requests(request: Request, call_next):
+    """Log requests and count total requests handled."""
+    import time
+
+    # Initialize if not set (for testing without lifecycle)
+    if not hasattr(app.state, "request_count"):
+        app.state.request_count = 0
+    if not hasattr(app.state, "pending_signs"):
+        app.state.pending_signs = {}
+
     app.state.request_count += 1
-    return await call_next(request)
+    start = time.perf_counter()
 
+    cert_info = ""
+    if request.client_cert_fingerprint:
+        cert_info = f" [cert:{request.client_cert_fingerprint[:8]}]"
+    print(f"[Guestbook] Request: {request.path}{cert_info}")
 
-@app.gemini("/")
+    response = await call_next(request)
+
+    elapsed = time.perf_counter() - start
+    print(f"[Guestbook] Response: {response.status} ({elapsed:.3f}s)")
+
+    return response
+```
+
+## Step 5: Create Routes
+
+### Home Page
+
+The home page shows recent entries and uses optional certificate detection:
+
+```python
+@app.gemini("/", name="home")
 @optional_certificate
 def home(request: Request):
+    """Home page showing recent entries."""
     identity = request.state.identity
     lines = ["# Guestbook", "", "Welcome to my guestbook!", ""]
 
@@ -460,40 +139,54 @@ def home(request: Request):
             lines.append(f"* {entry['name']}: {entry['message'][:50]}...")
         lines.append("")
 
-    lines.extend([
-        "=> /entries View all entries",
-        "=> /sign Sign the guestbook",
-    ])
+    lines.extend(
+        [
+            "=> /entries View all entries",
+            "=> /sign Sign the guestbook",
+        ]
+    )
 
     if identity:
-        lines.append(f"")
+        lines.append("")
         lines.append(f"Signed in as: {identity.short_id}")
 
     return "\n".join(lines)
+```
 
+### View All Entries
 
-@app.gemini("/entries")
+```python
+@app.gemini("/entries", name="entries")
 def view_entries(request: Request):
+    """List all guestbook entries."""
     lines = ["# Guestbook Entries", ""]
 
     if not entries:
         lines.append("No entries yet. Be the first to sign!")
     else:
         for entry in reversed(entries):
-            lines.extend([
-                f"## {entry['name']}",
-                f"> {entry['message']}",
-                f"Signed on {entry['date']}",
-                "",
-            ])
+            lines.extend(
+                [
+                    f"## {entry['name']}",
+                    f"> {entry['message']}",
+                    f"Signed on {entry['date']}",
+                    "",
+                ]
+            )
 
     lines.extend(["=> /sign Sign the guestbook", "=> / Home"])
     return "\n".join(lines)
+```
 
+### Multi-Step Signing Flow
 
-@app.input("/sign", prompt="Enter your name:")
+The signing flow uses `@app.input` for user input and `@require_certificate` for authentication:
+
+```python
+@app.input("/sign", prompt="Enter your name:", name="sign")
 @require_certificate
 def sign_name(request: Request, query: str):
+    """First step of signing: capture the user's name."""
     identity = get_identity(request)
     app.state.pending_signs[identity.fingerprint] = query
 
@@ -506,18 +199,21 @@ Your name: {query}
 """
 
 
-@app.input("/sign/message", prompt="Write your message:")
+@app.input("/sign/message", prompt="Write your message:", name="sign_message")
 @require_certificate
 def sign_message(request: Request, query: str):
+    """Second step of signing: capture the message and save the entry."""
     identity = get_identity(request)
     name = app.state.pending_signs.pop(identity.fingerprint, identity.short_id)
 
-    entries.append({
-        "name": name,
-        "message": query,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "fingerprint": identity.fingerprint,
-    })
+    entries.append(
+        {
+            "name": name,
+            "message": query,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "fingerprint": identity.fingerprint,
+        }
+    )
 
     return f"""# Thanks, {name}!
 
@@ -526,11 +222,17 @@ Your message has been added.
 => /entries View all entries
 => / Home
 """
+```
 
+### Admin Panel
 
-@app.gemini("/admin")
+The admin routes use `@require_fingerprint` to restrict access to specific certificates:
+
+```python
+@app.gemini("/admin", name="admin")
 @require_fingerprint(*ADMIN_FINGERPRINTS)
 def admin(request: Request):
+    """Admin panel for managing entries."""
     lines = ["# Admin Panel", ""]
 
     if not entries:
@@ -543,29 +245,64 @@ def admin(request: Request):
     return "\n".join(lines)
 
 
-@app.gemini("/admin/delete/{entry_id}")
+@app.gemini("/admin/delete/{entry_id}", name="admin_delete")
 @require_fingerprint(*ADMIN_FINGERPRINTS)
 def delete_entry(request: Request, entry_id: int):
+    """Delete a guestbook entry."""
     if 0 <= entry_id < len(entries):
         deleted = entries.pop(entry_id)
         return f"# Deleted\n\nRemoved entry by {deleted['name']}\n\n=> /admin Back"
     return "# Not Found\n\n=> /admin Back"
+```
 
+### Run the Application
 
+```python
 if __name__ == "__main__":
     app.run()
 ```
 
+## Step 6: Run the Application
+
+Start the server:
+
+```bash
+uv run python app.py
+```
+
+The server will start at `gemini://localhost:1965/` using a self-signed certificate for development.
+
+Connect with any Gemini browser (Lagrange, Amfora, Kristall, etc.) to test your guestbook.
+
+## Step 7: Finding Your Admin Fingerprint
+
+To use the admin panel, you need your client certificate's fingerprint. When you connect with a certificate, the server logs it:
+
+```
+[Guestbook] Request: / [cert:SHA256:T]
+```
+
+Copy the full fingerprint from the logs and add it to `ADMIN_FINGERPRINTS` in your `app.py`.
+
 ## Key Concepts Covered
 
-1. **Routing**: Multiple routes with path parameters
-2. **Templates**: Using Jinja2 templates for Gemtext
-3. **User Input**: Chained inputs for multi-step forms
+1. **Routing**: Multiple routes with path parameters (`/admin/delete/{entry_id}`)
+2. **Route Naming**: Using `name=` for URL reversing
+3. **User Input**: Chained inputs with `@app.input` for multi-step forms
 4. **Authentication**: Certificate-based auth with `@require_certificate`
 5. **Authorization**: Admin access with `@require_fingerprint`
-6. **Middleware**: Request logging and timing
+6. **Middleware**: Custom request logging and timing
 7. **Lifecycle**: Startup and shutdown handlers
-8. **Testing**: Comprehensive test coverage
+8. **State Management**: Using `app.state` for shared data
+
+## Production Considerations
+
+Before deploying to production:
+
+- Replace in-memory `entries` list with a proper database
+- Use real TLS certificates instead of self-signed
+- Configure rate limiting for spam protection
+- Implement input validation and sanitization
 
 ## Next Steps
 
