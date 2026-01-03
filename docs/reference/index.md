@@ -30,6 +30,12 @@ This section contains the complete API reference for Xitzin, automatically gener
 
     Route definition and path parameter extraction.
 
+-   [**CGI**](cgi.md)
+
+    ---
+
+    CGI script execution and configuration.
+
 -   [**Exceptions**](exceptions.md)
 
     ---

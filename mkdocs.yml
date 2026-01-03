@@ -113,6 +113,7 @@ nav:
       - Templates: how-to/templates.md
       - Middleware: how-to/middleware.md
       - Authentication: how-to/authentication.md
+      - CGI Scripts: how-to/cgi-scripts.md
       - Error Handling: how-to/error-handling.md
       - Testing: how-to/testing.md
       - Deployment: how-to/deployment.md
@@ -129,6 +130,7 @@ nav:
       - Requests: reference/requests.md
       - Responses: reference/responses.md
       - Routing: reference/routing.md
+      - CGI: reference/cgi.md
       - Exceptions: reference/exceptions.md
       - Middleware: reference/middleware.md
       - Authentication: reference/auth.md

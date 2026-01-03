@@ -40,6 +40,12 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     Implement certificate-based authentication and authorization.
 
+-   [**CGI Scripts**](cgi-scripts.md)
+
+    ---
+
+    Execute external CGI scripts and programs.
+
 -   [**Error Handling**](error-handling.md)
 
     ---
