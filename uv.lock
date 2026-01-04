@@ -1614,6 +1614,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "sqlmodel" },
     { name = "ty" },
 ]
 docs = [
@@ -1641,6 +1642,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.10" },
+    { name = "sqlmodel", specifier = ">=0.0.31" },
     { name = "ty", specifier = ">=0.0.8" },
 ]
 docs = [

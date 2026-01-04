@@ -137,6 +137,7 @@ nav:
       - Authentication: reference/auth.md
       - Templating: reference/templating.md
       - Testing: reference/testing.md
+      - SQLModel: reference/sqlmodel.md
   - Changelog: changelog.md
   - Contributing: contributing.md
 
