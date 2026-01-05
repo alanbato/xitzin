@@ -38,6 +38,7 @@ from .exceptions import (
     SensitiveInputRequired,
     ServerUnavailable,
     SlowDown,
+    TaskConfigurationError,
     TemporaryFailure,
 )
 from .requests import Request
@@ -73,6 +74,7 @@ __all__ = [
     "CertificateRequired",
     "CertificateNotAuthorized",
     "CertificateNotValid",
+    "TaskConfigurationError",
 ]
 
 __version__ = "0.1.0"

@@ -34,6 +34,12 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     Create and use middleware for logging, timing, and rate limiting.
 
+-   [**Background Tasks**](background-tasks.md)
+
+    ---
+
+    Run periodic tasks on intervals or cron schedules.
+
 -   [**Authentication**](authentication.md)
 
     ---

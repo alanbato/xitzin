@@ -136,3 +136,21 @@ class CertificateNotValid(GeminiException):
 
     status_code = 62
     default_message = "Certificate not valid"
+
+
+# Application configuration errors
+class TaskConfigurationError(Exception):
+    """Raised when a background task is misconfigured.
+
+    This typically indicates mutually exclusive parameters were provided,
+    or a required optional dependency is missing.
+
+    Example:
+        @app.task()  # Error: neither interval nor cron provided
+        def my_task():
+            pass
+
+        @app.task(interval="1h", cron="* * * * *")  # Error: both provided
+        def my_task():
+            pass
+    """

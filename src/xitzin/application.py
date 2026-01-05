@@ -14,12 +14,13 @@ from nauyaca.protocol.request import GeminiRequest
 from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
-from .exceptions import GeminiException, NotFound
+from .exceptions import GeminiException, NotFound, TaskConfigurationError
 from .requests import Request
 from .responses import Input, Redirect, convert_response
 from .routing import MountedRoute, Route, Router
 
 if TYPE_CHECKING:
+    from .tasks import BackgroundTask
     from .templating import TemplateEngine
 
 
@@ -84,6 +85,8 @@ class Xitzin:
         self._startup_handlers: list[Callable[[], Any]] = []
         self._shutdown_handlers: list[Callable[[], Any]] = []
         self._middleware: list[Callable[..., Any]] = []
+        self._tasks: list[BackgroundTask] = []
+        self._task_handles: list[asyncio.Task[Any]] = []
 
         if templates_dir:
             self._init_templates(Path(templates_dir))
@@ -336,6 +339,75 @@ class Xitzin:
         self._middleware.append(handler)
         return handler
 
+    def task(
+        self,
+        *,
+        interval: str | int | float | None = None,
+        cron: str | None = None,
+    ) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
+        """Register a background task.
+
+        Tasks run continuously while the server is running. They are started
+        after startup handlers and stopped before shutdown handlers.
+
+        Args:
+            interval: Run every N seconds (int) or duration string ("1h", "30m", "1d").
+            cron: Cron expression string ("0 * * * *" runs hourly).
+                Requires croniter: pip install 'xitzin[tasks]'
+
+        Exactly one of interval or cron must be provided.
+
+        Returns:
+            Decorator function.
+
+        Raises:
+            TaskConfigurationError: If neither or both parameters provided,
+                or if cron is used but croniter is not installed.
+
+        Example:
+            @app.task(interval="1h")
+            async def cleanup():
+                await app.state.db.cleanup_old_records()
+
+            @app.task(cron="0 2 * * *")  # 2 AM daily
+            def backup():
+                backup_database()
+        """
+        from .tasks import BackgroundTask, parse_interval
+
+        # Validate parameters
+        if interval is None and cron is None:
+            raise TaskConfigurationError("Either 'interval' or 'cron' must be provided")
+        if interval is not None and cron is not None:
+            raise TaskConfigurationError(
+                "Only one of 'interval' or 'cron' can be provided, not both"
+            )
+
+        # Check croniter availability
+        if cron is not None:
+            try:
+                from croniter import croniter as _  # noqa: F401
+            except ImportError:
+                raise TaskConfigurationError(
+                    "croniter is required for cron tasks. "
+                    "Install with: pip install 'xitzin[tasks]'"
+                ) from None
+
+        def decorator(handler: Callable[[], Any]) -> Callable[[], Any]:
+            # Parse interval if provided
+            parsed_interval = parse_interval(interval) if interval else None
+
+            task = BackgroundTask(
+                handler=handler,
+                interval=parsed_interval,
+                cron=cron,
+                name=getattr(handler, "__name__", "<anonymous>"),
+            )
+            self._tasks.append(task)
+            return handler
+
+        return decorator
+
     async def _run_startup(self) -> None:
         """Run all startup handlers."""
         for handler in self._startup_handlers:
@@ -351,6 +423,26 @@ class Xitzin:
                 await handler()
             else:
                 handler()
+
+    async def _run_tasks(self) -> None:
+        """Start all registered background tasks."""
+        from .tasks import run_cron_task, run_interval_task
+
+        for task in self._tasks:
+            if task.interval is not None:
+                handle = asyncio.create_task(run_interval_task(task))
+            else:  # task.cron is not None
+                handle = asyncio.create_task(run_cron_task(task))
+            self._task_handles.append(handle)
+
+    async def _stop_tasks(self) -> None:
+        """Stop all running background tasks."""
+        for handle in self._task_handles:
+            handle.cancel()
+        # Wait for all tasks to finish cancelling
+        if self._task_handles:
+            await asyncio.gather(*self._task_handles, return_exceptions=True)
+        self._task_handles.clear()
 
     async def _handle_request(self, raw_request: GeminiRequest) -> GeminiResponse:
         """Handle an incoming request.
@@ -462,6 +554,9 @@ class Xitzin:
         # Run startup handlers
         await self._run_startup()
 
+        # Start background tasks
+        await self._run_tasks()
+
         try:
             # Create PyOpenSSL context (accepts any self-signed client cert)
             if certfile and keyfile:
@@ -523,6 +618,8 @@ class Xitzin:
                 await server.serve_forever()
 
         finally:
+            # Stop background tasks
+            await self._stop_tasks()
             await self._run_shutdown()
 
     def run(

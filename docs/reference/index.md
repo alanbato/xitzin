@@ -30,6 +30,12 @@ This section contains the complete API reference for Xitzin, automatically gener
 
     Route definition and path parameter extraction.
 
+-   [**Tasks**](tasks.md)
+
+    ---
+
+    Background task scheduling with intervals and cron.
+
 -   [**CGI**](cgi.md)
 
     ---
