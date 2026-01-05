@@ -43,10 +43,14 @@ class MyMiddleware(BaseMiddleware):
         return response
 ```
 
-Register it:
+Register it by wrapping with the `@app.middleware` decorator:
 
 ```python
-app.add_middleware(MyMiddleware())
+my_middleware = MyMiddleware()
+
+@app.middleware
+async def custom(request, call_next):
+    return await my_middleware(request, call_next)
 ```
 
 ## Built-in Middleware
@@ -58,7 +62,11 @@ Tracks request processing time:
 ```python
 from xitzin.middleware import TimingMiddleware
 
-app.add_middleware(TimingMiddleware())
+timing_mw = TimingMiddleware()
+
+@app.middleware
+async def timing(request, call_next):
+    return await timing_mw(request, call_next)
 
 @app.gemini("/")
 def home(request: Request):
@@ -74,12 +82,20 @@ Logs requests and responses:
 from xitzin.middleware import LoggingMiddleware
 
 # With default print logging
-app.add_middleware(LoggingMiddleware())
+logging_mw = LoggingMiddleware()
+
+@app.middleware
+async def logging(request, call_next):
+    return await logging_mw(request, call_next)
 
 # With custom logger
 import logging
 logger = logging.getLogger(__name__)
-app.add_middleware(LoggingMiddleware(logger=logger.info))
+custom_logging_mw = LoggingMiddleware(logger=logger.info)
+
+@app.middleware
+async def custom_logging(request, call_next):
+    return await custom_logging_mw(request, call_next)
 ```
 
 ### RateLimitMiddleware
@@ -89,11 +105,15 @@ Simple rate limiting by certificate:
 ```python
 from xitzin.middleware import RateLimitMiddleware
 
-app.add_middleware(RateLimitMiddleware(
+rate_limit_mw = RateLimitMiddleware(
     max_requests=10,      # Max requests per window
     window_seconds=60.0,  # Time window
     retry_after=30        # Seconds to wait when rate limited
-))
+)
+
+@app.middleware
+async def rate_limit(request, call_next):
+    return await rate_limit_mw(request, call_next)
 ```
 
 ## Middleware Order
@@ -191,8 +211,21 @@ from xitzin.middleware import (
     RateLimitMiddleware,
 )
 
-# Add in desired order
-app.add_middleware(TimingMiddleware())
-app.add_middleware(LoggingMiddleware())
-app.add_middleware(RateLimitMiddleware(max_requests=100))
+# Create middleware instances
+timing_mw = TimingMiddleware()
+logging_mw = LoggingMiddleware()
+rate_limit_mw = RateLimitMiddleware(max_requests=100)
+
+# Register in desired order (first registered runs first)
+@app.middleware
+async def timing(request, call_next):
+    return await timing_mw(request, call_next)
+
+@app.middleware
+async def logging(request, call_next):
+    return await logging_mw(request, call_next)
+
+@app.middleware
+async def rate_limit(request, call_next):
+    return await rate_limit_mw(request, call_next)
 ```

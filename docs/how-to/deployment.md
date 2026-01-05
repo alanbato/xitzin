@@ -159,7 +159,11 @@ logging.basicConfig(
 from xitzin.middleware import LoggingMiddleware
 
 logger = logging.getLogger(__name__)
-app.add_middleware(LoggingMiddleware(logger=logger.info))
+logging_mw = LoggingMiddleware(logger=logger.info)
+
+@app.middleware
+async def logging(request, call_next):
+    return await logging_mw(request, call_next)
 ```
 
 ## Health Checks

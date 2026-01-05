@@ -6,9 +6,13 @@ and modify responses before they are sent to clients.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from abc import ABC
-from typing import TYPE_CHECKING, Awaitable, Callable
+from collections import OrderedDict
+from functools import lru_cache
+from inspect import iscoroutinefunction
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
@@ -40,7 +44,11 @@ class BaseMiddleware(ABC):
                 print(f"Response: {response.status}")
                 return response
 
-        app.add_middleware(LoggingMiddleware())
+        logging_mw = LoggingMiddleware()
+
+        @app.middleware
+        async def logging(request, call_next):
+            return await logging_mw(request, call_next)
     """
 
     async def before_request(
@@ -98,7 +106,11 @@ class TimingMiddleware(BaseMiddleware):
     Stores the elapsed time in request.state.elapsed_time.
 
     Example:
-        app.add_middleware(TimingMiddleware())
+        timing_mw = TimingMiddleware()
+
+        @app.middleware
+        async def timing(request, call_next):
+            return await timing_mw(request, call_next)
 
         @app.gemini("/")
         def home(request: Request):
@@ -124,7 +136,11 @@ class LoggingMiddleware(BaseMiddleware):
     """Middleware that logs requests and responses.
 
     Example:
-        app.add_middleware(LoggingMiddleware())
+        logging_mw = LoggingMiddleware()
+
+        @app.middleware
+        async def logging(request, call_next):
+            return await logging_mw(request, call_next)
     """
 
     def __init__(self, logger: Callable[[str], None] | None = None) -> None:
@@ -157,7 +173,11 @@ class RateLimitMiddleware(BaseMiddleware):
     Limits requests per client based on certificate fingerprint or IP.
 
     Example:
-        app.add_middleware(RateLimitMiddleware(max_requests=10, window_seconds=60))
+        rate_limit_mw = RateLimitMiddleware(max_requests=10, window_seconds=60)
+
+        @app.middleware
+        async def rate_limit(request, call_next):
+            return await rate_limit_mw(request, call_next)
     """
 
     def __init__(
@@ -217,3 +237,146 @@ class RateLimitMiddleware(BaseMiddleware):
             )
 
         return None
+
+
+class UserSessionMiddleware(BaseMiddleware):
+    """Middleware that loads and caches user data from certificate fingerprints.
+
+    Stores the loaded user in request.state.user. Uses an LRU cache to avoid
+    repeated database lookups for the same user across requests.
+
+    Supports both sync and async user_loader functions. Sync loaders are
+    executed in a thread pool to avoid blocking the event loop.
+
+    Example with sync loader:
+        from xitzin.middleware import UserSessionMiddleware
+
+        def load_user(fingerprint: str) -> User | None:
+            with Session(engine) as session:
+                return session.exec(
+                    select(User).where(User.fingerprint == fingerprint)
+                ).first()
+
+        user_mw = UserSessionMiddleware(load_user)
+
+        @app.middleware
+        async def user_session(request, call_next):
+            return await user_mw(request, call_next)
+
+    Example with async loader:
+        async def load_user(fingerprint: str) -> User | None:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(User).where(User.fingerprint == fingerprint)
+                )
+                return result.scalar_one_or_none()
+
+        user_mw = UserSessionMiddleware(load_user)
+    """
+
+    def __init__(
+        self,
+        user_loader: Callable[[str], Any] | Callable[[str], Awaitable[Any]],
+        cache_size: int = 100,
+    ) -> None:
+        """Create user session middleware.
+
+        Args:
+            user_loader: Function that takes a fingerprint and returns a user
+                object (or None if not found). Can be sync or async. Sync
+                loaders are executed in a thread pool to avoid blocking.
+            cache_size: Maximum number of users to cache. Defaults to 100.
+        """
+        self._user_loader = user_loader
+        self._cache_size = cache_size
+        self._is_async = iscoroutinefunction(user_loader)
+
+        # For sync loaders, use lru_cache
+        # For async loaders, use a simple OrderedDict-based LRU cache
+        if self._is_async:
+            self._async_cache: OrderedDict[str, Any] = OrderedDict()
+            self._cache_hits = 0
+            self._cache_misses = 0
+        else:
+            self._sync_cached_loader = lru_cache(maxsize=cache_size)(user_loader)
+
+    async def _get_user_async(self, fingerprint: str) -> Any:
+        """Get user with async loader and caching."""
+        if fingerprint in self._async_cache:
+            self._cache_hits += 1
+            # Move to end (most recently used)
+            self._async_cache.move_to_end(fingerprint)
+            return self._async_cache[fingerprint]
+
+        self._cache_misses += 1
+        user = await self._user_loader(fingerprint)  # type: ignore[misc]
+
+        # Add to cache
+        self._async_cache[fingerprint] = user
+        self._async_cache.move_to_end(fingerprint)
+
+        # Evict oldest if over capacity
+        while len(self._async_cache) > self._cache_size:
+            self._async_cache.popitem(last=False)
+
+        return user
+
+    async def _get_user_sync(self, fingerprint: str) -> Any:
+        """Get user with sync loader, running in executor."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._sync_cached_loader, fingerprint)
+
+    async def before_request(
+        self, request: "Request"
+    ) -> "Request | GeminiResponse | None":
+        fingerprint = request.client_cert_fingerprint
+        if fingerprint:
+            if self._is_async:
+                request.state.user = await self._get_user_async(fingerprint)
+            else:
+                request.state.user = await self._get_user_sync(fingerprint)
+        else:
+            request.state.user = None
+        return None
+
+    def clear_cache(self) -> None:
+        """Clear all cached users.
+
+        Call this after updating user data to ensure fresh lookups.
+
+        Example:
+            def update_user(user: User):
+                with Session(engine) as session:
+                    session.add(user)
+                    session.commit()
+                user_middleware.clear_cache()
+        """
+        if self._is_async:
+            self._async_cache.clear()
+            self._cache_hits = 0
+            self._cache_misses = 0
+        else:
+            self._sync_cached_loader.cache_clear()
+
+    def cache_info(self) -> Any:
+        """Return cache statistics.
+
+        Returns information about cache hits, misses, and size.
+
+        Example:
+            info = user_middleware.cache_info()
+            print(f"Cache hits: {info.hits}, misses: {info.misses}")
+        """
+        if self._is_async:
+            from collections import namedtuple
+
+            CacheInfo = namedtuple(
+                "CacheInfo", ["hits", "misses", "maxsize", "currsize"]
+            )
+            return CacheInfo(
+                hits=self._cache_hits,
+                misses=self._cache_misses,
+                maxsize=self._cache_size,
+                currsize=len(self._async_cache),
+            )
+        return self._sync_cached_loader.cache_info()

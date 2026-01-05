@@ -158,3 +158,95 @@ def admin(request: Request):
 def private_input(request: Request, query: str):
     ...
 ```
+
+## Caching User Lookups
+
+For applications with frequent requests from the same users (games, social apps),
+cache user lookups to reduce database queries.
+
+### Using UserSessionMiddleware
+
+The built-in `UserSessionMiddleware` caches user lookups automatically.
+It supports both sync and async loaders - sync loaders run in a thread pool
+to avoid blocking the event loop.
+
+```python
+from xitzin.middleware import UserSessionMiddleware
+from sqlmodel import Session, select
+
+def load_user(fingerprint: str) -> User | None:
+    with Session(engine) as session:
+        return session.exec(
+            select(User).where(User.fingerprint == fingerprint)
+        ).first()
+
+# Create middleware (keep reference for cache management)
+user_middleware = UserSessionMiddleware(load_user, cache_size=100)
+
+@app.middleware
+async def user_session(request, call_next):
+    return await user_middleware(request, call_next)
+
+@app.gemini("/profile")
+@require_certificate
+def profile(request: Request):
+    user = request.state.user  # Loaded by middleware
+    if not user:
+        return "=> /register Please register first"
+    return f"# Hello, {user.username}"
+```
+
+With an async database driver:
+
+```python
+async def load_user(fingerprint: str) -> User | None:
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.fingerprint == fingerprint)
+        )
+        return result.scalar_one_or_none()
+
+user_middleware = UserSessionMiddleware(load_user)
+```
+
+### Cache Invalidation
+
+Clear the cache when user data changes:
+
+```python
+def update_user(user: User):
+    with Session(engine) as session:
+        session.add(user)
+        session.commit()
+    user_middleware.clear_cache()  # Invalidate all cached users
+```
+
+### Using functools.lru_cache
+
+For simpler cases without middleware, use Python's `@lru_cache`:
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=100)
+def get_user(fingerprint: str) -> User | None:
+    with Session(engine) as session:
+        return session.exec(
+            select(User).where(User.fingerprint == fingerprint)
+        ).first()
+
+@app.gemini("/profile")
+@require_certificate
+def profile(request: Request):
+    user = get_user(request.client_cert_fingerprint)
+    if not user:
+        return "=> /register Please register first"
+    return f"# Hello, {user.username}"
+
+# Clear cache when user data changes:
+def update_user(user: User):
+    with Session(engine) as session:
+        session.add(user)
+        session.commit()
+    get_user.cache_clear()
+```

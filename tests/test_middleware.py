@@ -13,6 +13,7 @@ from xitzin.middleware import (
     LoggingMiddleware,
     RateLimitMiddleware,
     TimingMiddleware,
+    UserSessionMiddleware,
 )
 from xitzin.testing import TestClient
 
@@ -449,3 +450,267 @@ class TestMiddlewareIntegration:
 
         assert response.is_success
         assert len(logs) >= 2
+
+
+class TestUserSessionMiddleware:
+    """Tests for UserSessionMiddleware."""
+
+    def test_loads_user_with_fingerprint(self):
+        """Loads user when certificate fingerprint is present."""
+        users = {"abc123": {"name": "Alice"}}
+
+        def load_user(fingerprint):
+            return users.get(fingerprint)
+
+        mw = UserSessionMiddleware(load_user)
+        raw = GeminiRequest.from_line("gemini://test/")
+        raw.client_cert_fingerprint = "abc123"
+        request = Request(raw)
+
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        assert request.state.user == {"name": "Alice"}
+
+    def test_sets_none_without_fingerprint(self):
+        """Sets user to None when no certificate."""
+
+        def load_user(fingerprint):
+            return {"name": "Test"}
+
+        mw = UserSessionMiddleware(load_user)
+        raw = GeminiRequest.from_line("gemini://test/")
+        request = Request(raw)
+
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        assert request.state.user is None
+
+    def test_caches_user_lookups(self):
+        """Caches user lookups to avoid repeated calls."""
+        call_count = 0
+
+        def load_user(fingerprint):
+            nonlocal call_count
+            call_count += 1
+            return {"name": "Cached"}
+
+        mw = UserSessionMiddleware(load_user, cache_size=10)
+
+        # First request
+        raw1 = GeminiRequest.from_line("gemini://test/")
+        raw1.client_cert_fingerprint = "cached123"
+        request1 = Request(raw1)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request1))
+
+        # Second request with same fingerprint
+        raw2 = GeminiRequest.from_line("gemini://test/page")
+        raw2.client_cert_fingerprint = "cached123"
+        request2 = Request(raw2)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request2))
+
+        # Should only call load_user once due to caching
+        assert call_count == 1
+        assert request1.state.user == {"name": "Cached"}
+        assert request2.state.user == {"name": "Cached"}
+
+    def test_clear_cache(self):
+        """clear_cache() invalidates all cached users."""
+        call_count = 0
+
+        def load_user(fingerprint):
+            nonlocal call_count
+            call_count += 1
+            return {"name": f"User {call_count}"}
+
+        mw = UserSessionMiddleware(load_user)
+
+        raw1 = GeminiRequest.from_line("gemini://test/")
+        raw1.client_cert_fingerprint = "test123"
+        request1 = Request(raw1)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request1))
+
+        assert call_count == 1
+        assert request1.state.user == {"name": "User 1"}
+
+        # Clear cache
+        mw.clear_cache()
+
+        # Same fingerprint should trigger new lookup
+        raw2 = GeminiRequest.from_line("gemini://test/")
+        raw2.client_cert_fingerprint = "test123"
+        request2 = Request(raw2)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request2))
+
+        assert call_count == 2
+        assert request2.state.user == {"name": "User 2"}
+
+    def test_cache_info(self):
+        """cache_info() returns cache statistics."""
+
+        def load_user(fingerprint):
+            return {"name": "Test"}
+
+        mw = UserSessionMiddleware(load_user)
+
+        raw = GeminiRequest.from_line("gemini://test/")
+        raw.client_cert_fingerprint = "info123"
+        request = Request(raw)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        info = mw.cache_info()
+        assert info.misses >= 1
+
+    def test_custom_cache_size(self):
+        """Respects custom cache size."""
+        mw = UserSessionMiddleware(lambda x: x, cache_size=50)
+
+        info = mw.cache_info()
+        assert info.maxsize == 50
+
+    def test_integration_with_app(self):
+        """UserSessionMiddleware integrates with app."""
+        users = {"user123": {"name": "Alice", "role": "admin"}}
+
+        def load_user(fingerprint):
+            return users.get(fingerprint)
+
+        app = Xitzin()
+        user_mw = UserSessionMiddleware(load_user)
+
+        @app.middleware
+        async def wrapped_user(request, call_next):
+            return await user_mw(request, call_next)
+
+        @app.gemini("/profile")
+        def profile(request: Request):
+            user = request.state.user
+            if user:
+                return f"# Hello, {user['name']}"
+            return "# Anonymous"
+
+        client = TestClient(app)
+
+        # With certificate
+        response = client.with_certificate("user123").get("/profile")
+        assert response.body == "# Hello, Alice"
+
+        # Without certificate
+        response = client.get("/profile")
+        assert response.body == "# Anonymous"
+
+    def test_async_user_loader(self):
+        """Supports async user_loader functions."""
+        users = {"async123": {"name": "AsyncUser"}}
+
+        async def async_load_user(fingerprint):
+            await asyncio.sleep(0)  # Simulate async operation
+            return users.get(fingerprint)
+
+        mw = UserSessionMiddleware(async_load_user)
+        raw = GeminiRequest.from_line("gemini://test/")
+        raw.client_cert_fingerprint = "async123"
+        request = Request(raw)
+
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        assert request.state.user == {"name": "AsyncUser"}
+
+    def test_async_loader_caches(self):
+        """Async loader results are cached."""
+        call_count = 0
+
+        async def async_load_user(fingerprint):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0)
+            return {"name": "Cached"}
+
+        mw = UserSessionMiddleware(async_load_user, cache_size=10)
+
+        # First request
+        raw1 = GeminiRequest.from_line("gemini://test/")
+        raw1.client_cert_fingerprint = "cached_async"
+        request1 = Request(raw1)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request1))
+
+        # Second request with same fingerprint
+        raw2 = GeminiRequest.from_line("gemini://test/page")
+        raw2.client_cert_fingerprint = "cached_async"
+        request2 = Request(raw2)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request2))
+
+        # Should only call load_user once due to caching
+        assert call_count == 1
+        assert request1.state.user == {"name": "Cached"}
+        assert request2.state.user == {"name": "Cached"}
+
+    def test_async_clear_cache(self):
+        """clear_cache() works with async loaders."""
+        call_count = 0
+
+        async def async_load_user(fingerprint):
+            nonlocal call_count
+            call_count += 1
+            return {"name": f"User {call_count}"}
+
+        mw = UserSessionMiddleware(async_load_user)
+
+        raw1 = GeminiRequest.from_line("gemini://test/")
+        raw1.client_cert_fingerprint = "clear_async"
+        request1 = Request(raw1)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request1))
+
+        assert call_count == 1
+
+        # Clear cache
+        mw.clear_cache()
+
+        # Same fingerprint should trigger new lookup
+        raw2 = GeminiRequest.from_line("gemini://test/")
+        raw2.client_cert_fingerprint = "clear_async"
+        request2 = Request(raw2)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request2))
+
+        assert call_count == 2
+
+    def test_async_cache_info(self):
+        """cache_info() works with async loaders."""
+
+        async def async_load_user(fingerprint):
+            return {"name": "Test"}
+
+        mw = UserSessionMiddleware(async_load_user, cache_size=50)
+
+        raw = GeminiRequest.from_line("gemini://test/")
+        raw.client_cert_fingerprint = "info_async"
+        request = Request(raw)
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        info = mw.cache_info()
+        assert info.misses == 1
+        assert info.hits == 0
+        assert info.maxsize == 50
+        assert info.currsize == 1
+
+    def test_sync_loader_runs_in_executor(self):
+        """Sync loaders are executed in thread pool executor."""
+        import threading
+
+        main_thread = threading.current_thread()
+        loader_thread = None
+
+        def sync_load_user(fingerprint):
+            nonlocal loader_thread
+            loader_thread = threading.current_thread()
+            return {"name": "ThreadTest"}
+
+        mw = UserSessionMiddleware(sync_load_user)
+        raw = GeminiRequest.from_line("gemini://test/")
+        raw.client_cert_fingerprint = "thread_test"
+        request = Request(raw)
+
+        asyncio.get_event_loop().run_until_complete(mw.before_request(request))
+
+        # The loader should have run in a different thread
+        assert loader_thread is not None
+        assert loader_thread != main_thread
