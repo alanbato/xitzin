@@ -141,6 +141,163 @@ Certificate: {identity.short_id}
 """
 ```
 
+## Persistent Users with SQLModel
+
+For production applications, store users in a database using SQLModel.
+The `get_or_create` pattern automatically creates new users on first visit.
+
+!!! tip "SQLModel Setup"
+    See the [SQLModel reference](../reference/sqlmodel.md) for installation and middleware setup.
+
+### User Model with get_or_create
+
+```python
+from datetime import datetime
+from sqlmodel import Field, Session, SQLModel, select
+
+class User(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    fingerprint: str = Field(unique=True, index=True)
+    username: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @classmethod
+    def get_or_create(cls, session: Session, fingerprint: str) -> "User":
+        """Get existing user or create new one from certificate fingerprint."""
+        user = session.exec(
+            select(cls).where(cls.fingerprint == fingerprint)
+        ).first()
+
+        if not user:
+            user = cls(fingerprint=fingerprint)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+        return user
+
+    @property
+    def display_name(self) -> str:
+        """Username or anonymous identifier."""
+        return self.username or f"Anon-{self.fingerprint[:8]}"
+```
+
+### Using in Routes
+
+```python
+from xitzin import Xitzin, Request, Redirect
+from xitzin.auth import require_certificate
+from xitzin.sqlmodel import get_session, init_db, SessionMiddleware
+from sqlmodel import create_engine
+
+app = Xitzin()
+engine = create_engine("sqlite:///app.db")
+init_db(app, engine)
+app.middleware(SessionMiddleware(engine))
+
+@app.gemini("/profile")
+@require_certificate
+def profile(request: Request):
+    session = get_session(request)
+    user = User.get_or_create(session, request.client_cert_fingerprint)
+
+    return f"""# {user.display_name}
+
+Member since: {user.created_at.strftime('%B %Y')}
+
+=> /profile/edit Edit profile
+"""
+
+@app.input("/profile/edit/username", prompt="New username (3-20 chars):")
+@require_certificate
+def edit_username(request: Request, query: str):
+    if not 3 <= len(query) <= 20:
+        return "# Error\nUsername must be 3-20 characters."
+
+    session = get_session(request)
+    user = User.get_or_create(session, request.client_cert_fingerprint)
+    user.username = query
+    session.add(user)
+    session.commit()
+
+    return Redirect("/profile")
+```
+
+### User Loader Middleware
+
+For apps where every authenticated route needs the user, auto-load with middleware:
+
+```python
+@app.middleware
+async def load_user(request: Request, call_next):
+    if request.client_cert_fingerprint:
+        session = get_session(request)
+        request.state.user = User.get_or_create(
+            session,
+            request.client_cert_fingerprint
+        )
+    else:
+        request.state.user = None
+    return await call_next(request)
+
+# All handlers can now access request.state.user
+@app.gemini("/dashboard")
+@require_certificate
+def dashboard(request: Request):
+    return f"# Welcome, {request.state.user.display_name}"
+```
+
+### Registration Flow
+
+For apps requiring explicit registration before creating an account:
+
+```python
+@app.gemini("/register")
+@require_certificate
+def register_check(request: Request):
+    session = get_session(request)
+    existing = session.exec(
+        select(User).where(
+            User.fingerprint == request.client_cert_fingerprint
+        )
+    ).first()
+
+    if existing:
+        return Redirect("/profile")
+
+    return """# Welcome!
+
+You haven't registered yet.
+
+=> /register/username Choose a username
+"""
+
+@app.input("/register/username", prompt="Choose a username (3-20 chars):")
+@require_certificate
+def register_username(request: Request, query: str):
+    if not 3 <= len(query) <= 20:
+        return "# Error\nUsername must be 3-20 characters."
+
+    session = get_session(request)
+
+    # Check uniqueness
+    existing = session.exec(
+        select(User).where(User.username == query)
+    ).first()
+    if existing:
+        return "# Error\nUsername already taken."
+
+    # Create user
+    user = User(
+        fingerprint=request.client_cert_fingerprint,
+        username=query
+    )
+    session.add(user)
+    session.commit()
+
+    return Redirect("/profile")
+```
+
 ## Decorator Order
 
 When combining decorators, `@require_certificate` should be closest to the function:
