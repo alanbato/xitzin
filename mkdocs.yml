@@ -115,6 +115,7 @@ nav:
       - Middleware: how-to/middleware.md
       - Background Tasks: how-to/background-tasks.md
       - Authentication: how-to/authentication.md
+      - Database Migrations: how-to/database-migrations.md
       - CGI Scripts: how-to/cgi-scripts.md
       - Error Handling: how-to/error-handling.md
       - Testing: how-to/testing.md

@@ -5,6 +5,9 @@ Database session management for Xitzin applications using SQLModel.
 !!! note "Optional Dependency"
     Requires the `sqlmodel` extra: `pip install xitzin[sqlmodel]`
 
+!!! tip "Database Migrations"
+    For schema evolution in production, see the [Database Migrations](../how-to/database-migrations.md) guide for Alembic integration.
+
 ## SessionMiddleware
 
 Creates middleware that manages database sessions per request.
