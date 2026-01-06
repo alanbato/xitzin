@@ -692,7 +692,8 @@ class TestCGIConfig:
         assert config.max_header_size == 8192
         assert config.streaming is False
         assert config.check_execute_permission is True
-        assert config.inherit_environment is True
+        # Security: default to False to avoid leaking server env vars
+        assert config.inherit_environment is False
         assert config.app_state_keys == []
 
     def test_custom_values(self):

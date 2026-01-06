@@ -507,7 +507,7 @@ class TestXitzinRequestHandling:
         assert "Resource not found" in response.meta
 
     def test_generic_exception_handling(self):
-        """Generic exception returns 40 with error type."""
+        """Generic exception returns 40 with generic error message."""
         app = Xitzin()
 
         @app.gemini("/crash")
@@ -518,7 +518,8 @@ class TestXitzinRequestHandling:
         response = client.get("/crash")
 
         assert response.status == 40
-        assert "ValueError" in response.meta
+        # Security: error message should be generic, not expose exception type
+        assert response.meta == "Internal server error"
 
     def test_async_handler(self):
         """Async handler is awaited."""

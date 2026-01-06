@@ -563,14 +563,14 @@ class Xitzin:
 
         except GeminiException as e:
             return GeminiResponse(status=e.status_code, meta=e.message)
-        except Exception as e:
+        except Exception:
             # Log the error and return a generic failure
             import traceback
 
             traceback.print_exc()
             return GeminiResponse(
                 status=StatusCode.TEMPORARY_FAILURE,
-                meta=f"Internal error: {type(e).__name__}",
+                meta="Internal server error",
             )
 
     def _wrap_middleware(

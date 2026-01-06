@@ -49,7 +49,7 @@ class SCGIConfig:
     timeout: float = 30.0
     max_response_size: int | None = 1048576  # 1MB default
     buffer_size: int = 8192
-    inherit_environment: bool = True
+    inherit_environment: bool = False
     app_state_keys: list[str] = field(default_factory=list)
 
 

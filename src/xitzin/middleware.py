@@ -202,7 +202,9 @@ class RateLimitMiddleware(BaseMiddleware):
         """Get a unique identifier for the client."""
         if request.client_cert_fingerprint:
             return f"cert:{request.client_cert_fingerprint}"
-        # Fall back to a placeholder (in production, use IP from transport)
+        # Use IP address when available for anonymous clients
+        if request.remote_addr:
+            return f"ip:{request.remote_addr}"
         return "unknown"
 
     def _is_rate_limited(self, client_id: str) -> bool:

@@ -6,6 +6,7 @@ Gemini client certificate authentication.
 
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable
@@ -89,6 +90,27 @@ def require_certificate(handler: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+def _timing_safe_fingerprint_check(fingerprint: str, allowed: list[str]) -> bool:
+    """Check if fingerprint matches any allowed value using timing-safe comparison.
+
+    This prevents timing attacks that could reveal valid fingerprints.
+
+    Args:
+        fingerprint: The fingerprint to check.
+        allowed: List of allowed fingerprints.
+
+    Returns:
+        True if fingerprint matches any allowed value.
+    """
+    # Encode once for comparison
+    fp_bytes = fingerprint.encode("utf-8")
+
+    for allowed_fp in allowed:
+        if hmac.compare_digest(fp_bytes, allowed_fp.encode("utf-8")):
+            return True
+    return False
+
+
 def require_fingerprint(
     *allowed_fingerprints: str,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -96,6 +118,8 @@ def require_fingerprint(
 
     If the client certificate fingerprint is not in the allowed list,
     returns status 61 (certificate not authorized).
+
+    Uses timing-safe comparison to prevent fingerprint enumeration attacks.
 
     Args:
         *allowed_fingerprints: SHA-256 fingerprints that are allowed.
@@ -111,7 +135,7 @@ def require_fingerprint(
         def admin_panel(request: Request):
             return "# Admin Panel"
     """
-    allowed_set = set(allowed_fingerprints)
+    allowed_list = list(allowed_fingerprints)
 
     def decorator(handler: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(handler)
@@ -119,7 +143,9 @@ def require_fingerprint(
             if not request.client_cert_fingerprint:
                 raise CertificateRequired("Client certificate required")
 
-            if request.client_cert_fingerprint not in allowed_set:
+            if not _timing_safe_fingerprint_check(
+                request.client_cert_fingerprint, allowed_list
+            ):
                 raise CertificateNotAuthorized("Certificate not authorized")
 
             return handler(request, *args, **kwargs)

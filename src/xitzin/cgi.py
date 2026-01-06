@@ -26,9 +26,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
 from nauyaca.protocol.response import GeminiResponse
 
 from .exceptions import BadRequest, CGIError, NotFound
+
+logger = structlog.get_logger("xitzin.cgi")
 
 if TYPE_CHECKING:
     from .requests import Request
@@ -56,7 +59,7 @@ class CGIConfig:
     max_header_size: int = 8192
     streaming: bool = False
     check_execute_permission: bool = True
-    inherit_environment: bool = True
+    inherit_environment: bool = False
     app_state_keys: list[str] = field(default_factory=list)
 
 
@@ -379,10 +382,14 @@ class CGIHandler:
 
             # Check exit code
             if process.returncode != 0:
-                error_msg = stderr.decode("utf-8", errors="replace")[:200]
-                if error_msg:
-                    raise CGIError(
-                        f"CGI script exited with code {process.returncode}: {error_msg}"
+                # Log stderr server-side but don't expose to client
+                if stderr:
+                    error_detail = stderr.decode("utf-8", errors="replace")[:500]
+                    logger.error(
+                        "cgi_script_failed",
+                        script=str(script_path),
+                        returncode=process.returncode,
+                        stderr=error_detail,
                     )
                 raise CGIError(f"CGI script exited with code {process.returncode}")
 
@@ -420,7 +427,7 @@ class CGIScript:
         *,
         timeout: float = 30.0,
         check_execute_permission: bool = True,
-        inherit_environment: bool = True,
+        inherit_environment: bool = False,
         app_state_keys: list[str] | None = None,
     ) -> None:
         """Create a single-script CGI handler.
@@ -530,10 +537,14 @@ class CGIScript:
                 ) from None
 
             if process.returncode != 0:
-                error_msg = stderr.decode("utf-8", errors="replace")[:200]
-                if error_msg:
-                    raise CGIError(
-                        f"CGI script exited with code {process.returncode}: {error_msg}"
+                # Log stderr server-side but don't expose to client
+                if stderr:
+                    error_detail = stderr.decode("utf-8", errors="replace")[:500]
+                    logger.error(
+                        "cgi_script_failed",
+                        script=str(self.script_path),
+                        returncode=process.returncode,
+                        stderr=error_detail,
                     )
                 raise CGIError(f"CGI script exited with code {process.returncode}")
 
