@@ -22,6 +22,7 @@ Example:
 
 from .application import Xitzin
 from .cgi import CGIConfig, CGIHandler, CGIScript
+from .scgi import SCGIApp, SCGIConfig, SCGIHandler
 from .exceptions import (
     BadRequest,
     CertificateNotAuthorized,
@@ -57,6 +58,10 @@ __all__ = [
     "CGIConfig",
     "CGIHandler",
     "CGIScript",
+    # SCGI support
+    "SCGIApp",
+    "SCGIConfig",
+    "SCGIHandler",
     # Exceptions
     "GeminiException",
     "InputRequired",

@@ -291,6 +291,69 @@ class Xitzin:
         handler = CGIHandler(script_dir, config=config)
         self.mount(path, handler, name=name)
 
+    def scgi(
+        self,
+        path: str,
+        host: str | None = None,
+        port: int | None = None,
+        socket_path: Path | str | None = None,
+        *,
+        name: str | None = None,
+        timeout: float = 30.0,
+        app_state_keys: list[str] | None = None,
+    ) -> None:
+        """Mount an SCGI backend at a path prefix.
+
+        This is a convenience method that creates an SCGIHandler or SCGIApp
+        and mounts it. Exactly one of (host+port) or socket_path must be provided.
+
+        Args:
+            path: Mount point prefix (e.g., "/dynamic").
+            host: SCGI server hostname (for TCP connection).
+            port: SCGI server port (for TCP connection).
+            socket_path: Path to Unix socket (for local connection).
+            name: Optional name for the mount.
+            timeout: Maximum response wait time in seconds.
+            app_state_keys: App state keys to pass as XITZIN_* env vars.
+
+        Raises:
+            ValueError: If neither or both connection types are specified.
+
+        Example:
+            # TCP connection
+            app.scgi("/dynamic", host="127.0.0.1", port=4000, timeout=30)
+
+            # Unix socket connection
+            app.scgi("/dynamic", socket_path="/tmp/scgi.sock", timeout=30)
+        """
+        from .scgi import SCGIApp, SCGIConfig, SCGIHandler
+
+        # Validate parameters
+        tcp_specified = host is not None or port is not None
+        unix_specified = socket_path is not None
+
+        if tcp_specified and unix_specified:
+            msg = "Cannot specify both TCP (host/port) and Unix socket (socket_path)"
+            raise ValueError(msg)
+        if not tcp_specified and not unix_specified:
+            msg = "Must specify either TCP (host and port) or Unix socket (socket_path)"
+            raise ValueError(msg)
+        if tcp_specified and (host is None or port is None):
+            msg = "Both host and port must be specified for TCP connection"
+            raise ValueError(msg)
+
+        config = SCGIConfig(
+            timeout=timeout,
+            app_state_keys=app_state_keys or [],
+        )
+
+        if tcp_specified:
+            handler = SCGIHandler(host, port, config=config)  # type: ignore[arg-type]
+        else:
+            handler = SCGIApp(socket_path, config=config)  # type: ignore[arg-type]
+
+        self.mount(path, handler, name=name)
+
     def on_startup(self, handler: Callable[[], Any]) -> Callable[[], Any]:
         """Register a startup event handler.
 

@@ -117,6 +117,7 @@ nav:
       - Authentication: how-to/authentication.md
       - Database Migrations: how-to/database-migrations.md
       - CGI Scripts: how-to/cgi-scripts.md
+      - SCGI Backends: how-to/scgi-backends.md
       - Error Handling: how-to/error-handling.md
       - Testing: how-to/testing.md
       - Deployment: how-to/deployment.md
@@ -135,6 +136,7 @@ nav:
       - Routing: reference/routing.md
       - Tasks: reference/tasks.md
       - CGI: reference/cgi.md
+      - SCGI: reference/scgi.md
       - Exceptions: reference/exceptions.md
       - Middleware: reference/middleware.md
       - Authentication: reference/auth.md
