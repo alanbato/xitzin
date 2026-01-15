@@ -14,7 +14,6 @@ from nauyaca.protocol.status import StatusCode
 
 if TYPE_CHECKING:
     from .application import Xitzin
-    from .requests import Request
 
 
 class ResponseConvertible(Protocol):
@@ -156,7 +155,7 @@ class Link:
         return self.to_gemtext()
 
 
-def convert_response(result: Any, request: Request | None = None) -> GeminiResponse:
+def convert_response(result: Any, request: Any = None) -> GeminiResponse:
     """Convert a handler return value to a GeminiResponse.
 
     Handlers can return:
@@ -168,7 +167,7 @@ def convert_response(result: Any, request: Request | None = None) -> GeminiRespo
 
     Args:
         result: The return value from a handler.
-        request: The current request (for URL tracking).
+        request: The current request (Request or TitanRequest, for URL tracking).
 
     Returns:
         A GeminiResponse instance.

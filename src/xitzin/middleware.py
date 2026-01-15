@@ -311,7 +311,7 @@ class UserSessionMiddleware(BaseMiddleware):
             return self._async_cache[fingerprint]
 
         self._cache_misses += 1
-        user = await self._user_loader(fingerprint)  # type: ignore[misc]
+        user = await self._user_loader(fingerprint)
 
         # Add to cache
         self._async_cache[fingerprint] = user

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Generator
 from urllib.parse import quote_plus
 
 from nauyaca.protocol.request import GeminiRequest
+from nauyaca.protocol.request import TitanRequest as NauyacaTitanRequest
 from nauyaca.protocol.response import GeminiResponse
 
 if TYPE_CHECKING:
@@ -153,10 +154,15 @@ class TestClient:
         # Handle request through the app
         response = self._handle_sync(request)
 
+        # Convert bytes body to str for TestResponse
+        body = response.body
+        if isinstance(body, bytes):
+            body = body.decode("utf-8")
+
         return TestResponse(
             status=response.status,
             meta=response.meta,
-            body=response.body,
+            body=body,
         )
 
     def get_input(
@@ -210,6 +216,100 @@ class TestClient:
         new_client._default_fingerprint = fingerprint
         return new_client
 
+    def upload(
+        self,
+        path: str,
+        content: bytes | str,
+        *,
+        mime_type: str = "text/gemini",
+        token: str | None = None,
+        cert_fingerprint: str | None = None,
+    ) -> TestResponse:
+        """Make a Titan upload request.
+
+        Args:
+            path: The request path (e.g., "/upload/file.gmi").
+            content: Content to upload (str will be UTF-8 encoded).
+            mime_type: Content MIME type (default: text/gemini).
+            token: Authentication token (if required by route).
+            cert_fingerprint: Mock client certificate fingerprint.
+
+        Returns:
+            TestResponse with status, meta, and body.
+
+        Example:
+            response = client.upload(
+                "/files/test.gmi",
+                "# Hello World",
+                mime_type="text/gemini",
+                token="secret123"
+            )
+            assert response.is_success
+        """
+        # Convert str to bytes
+        if isinstance(content, str):
+            content_bytes = content.encode("utf-8")
+        else:
+            content_bytes = content
+
+        # Build Titan URL
+        size = len(content_bytes)
+        url = f"titan://testserver{path};size={size};mime={mime_type}"
+        if token:
+            url += f";token={token}"
+
+        # Create TitanRequest
+        request = NauyacaTitanRequest.from_line(url)
+        request.content = content_bytes
+
+        # Set certificate info
+        fingerprint = cert_fingerprint or self._default_fingerprint
+        if fingerprint:
+            request.client_cert_fingerprint = fingerprint
+
+        # Handle through app
+        response = self._handle_titan_sync(request)
+
+        # Convert bytes body to str for TestResponse
+        body = response.body
+        if isinstance(body, bytes):
+            body = body.decode("utf-8")
+
+        return TestResponse(
+            status=response.status,
+            meta=response.meta,
+            body=body,
+        )
+
+    def delete(
+        self,
+        path: str,
+        *,
+        token: str | None = None,
+        cert_fingerprint: str | None = None,
+    ) -> TestResponse:
+        """Make a Titan delete request (zero-byte upload).
+
+        Args:
+            path: The request path to delete.
+            token: Authentication token (if required by route).
+            cert_fingerprint: Mock client certificate fingerprint.
+
+        Returns:
+            TestResponse with status, meta, and body.
+
+        Example:
+            response = client.delete("/files/old.gmi", token="secret123")
+            assert response.is_success
+        """
+        return self.upload(
+            path,
+            b"",
+            mime_type="text/gemini",
+            token=token,
+            cert_fingerprint=cert_fingerprint,
+        )
+
     def _handle_sync(self, request: GeminiRequest) -> GeminiResponse:
         """Handle a request synchronously."""
         try:
@@ -219,6 +319,16 @@ class TestClient:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(self._app._handle_request(request))
+
+    def _handle_titan_sync(self, request: NauyacaTitanRequest) -> GeminiResponse:
+        """Handle a Titan request synchronously."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self._app._handle_titan_request(request))
 
 
 @contextmanager

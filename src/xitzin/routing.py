@@ -282,6 +282,143 @@ class MountedRoute:
         return f"MountedRoute({self.path_prefix!r}, name={self.name!r})"
 
 
+class TitanRoute:
+    """Route for Titan upload handlers with integrated authentication.
+
+    Similar to Route, but designed for Titan uploads with:
+    - Token-based authentication
+    - Explicit content/mime_type/token parameters passed to handlers
+
+    Example:
+        route = TitanRoute(
+            "/upload/{filename}",
+            upload_handler,
+            auth_tokens=["secret123"]
+        )
+    """
+
+    def __init__(
+        self,
+        path: str,
+        handler: Callable[..., Any],
+        *,
+        name: str | None = None,
+        auth_tokens: list[str] | None = None,
+    ) -> None:
+        """Create a new Titan route.
+
+        Args:
+            path: Path template with optional parameters (e.g., "/upload/{filename}").
+            handler: The handler function to call.
+            name: Route name for identification. Defaults to handler function name.
+            auth_tokens: List of valid authentication tokens. If provided,
+                requests without a valid token are rejected with status 60.
+        """
+        self.path = path
+        self.handler = handler
+        self.name = (
+            name if name is not None else getattr(handler, "__name__", "<anonymous>")
+        )
+        self.auth_tokens = set(auth_tokens) if auth_tokens else None
+
+        self._param_pattern, self._param_names = self._compile_path(path)
+        self._type_hints = self._get_handler_type_hints(handler)
+        self._is_async = asyncio.iscoroutinefunction(handler)
+
+    def _compile_path(self, path: str) -> tuple[re.Pattern[str], list[str]]:
+        """Convert a path template to a regex pattern.
+
+        Same logic as Route._compile_path().
+        """
+        param_names: list[str] = []
+
+        def replace_param(match: re.Match[str]) -> str:
+            name = match.group(1)
+            param_type = match.group(2)
+            param_names.append(name)
+
+            if param_type == "path":
+                return f"(?P<{name}>.+)"
+            return f"(?P<{name}>[^/]+)"
+
+        escaped = re.escape(path)
+        escaped = escaped.replace(r"\{", "{").replace(r"\}", "}")
+        regex_path = PATH_PARAM_PATTERN.sub(replace_param, escaped)
+
+        return re.compile(f"^{regex_path}$"), param_names
+
+    def _get_handler_type_hints(self, handler: Callable[..., Any]) -> dict[str, type]:
+        """Extract type hints from handler function.
+
+        Excludes 'request', 'content', 'mime_type', 'token', and 'return'.
+        """
+        try:
+            hints = get_type_hints(handler)
+            # Remove non-path-parameter hints
+            hints.pop("request", None)
+            hints.pop("content", None)
+            hints.pop("mime_type", None)
+            hints.pop("token", None)
+            hints.pop("return", None)
+            return hints
+        except Exception:
+            return {}
+
+    def matches(self, path: str) -> bool:
+        """Check if this route matches the given path."""
+        return self._param_pattern.match(path) is not None
+
+    def extract_params(self, path: str) -> dict[str, Any]:
+        """Extract and type-convert path parameters."""
+        match = self._param_pattern.match(path)
+        if not match:
+            return {}
+
+        params: dict[str, Any] = {}
+        for name, value in match.groupdict().items():
+            target_type = self._type_hints.get(name, str)
+            try:
+                if target_type is int:
+                    params[name] = int(value)
+                elif target_type is float:
+                    params[name] = float(value)
+                elif target_type is bool:
+                    params[name] = value.lower() in ("true", "1", "yes")
+                else:
+                    params[name] = value
+            except (ValueError, TypeError):
+                params[name] = value
+
+        return params
+
+    async def call_handler(self, request: Any, params: dict[str, Any]) -> Any:
+        """Call the handler with request and explicit Titan parameters.
+
+        Args:
+            request: TitanRequest object (typed as Any to avoid circular imports).
+            params: Path parameters extracted from the URL.
+
+        Handler receives: (request, content, mime_type, token, **path_params)
+        """
+        # Add Titan-specific parameters
+        handler_params = {
+            "content": request.content,
+            "mime_type": request.mime_type,
+            "token": request.token,
+            **params,
+        }
+
+        if self._is_async:
+            return await self.handler(request, **handler_params)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: self.handler(request, **handler_params)
+        )
+
+    def __repr__(self) -> str:
+        return f"TitanRoute({self.path!r}, name={self.name!r})"
+
+
 class Router:
     """Collection of routes with matching logic.
 
@@ -293,6 +430,7 @@ class Router:
         self._routes: list[Route] = []
         self._routes_by_name: dict[str, Route] = {}
         self._mounted_routes: list[MountedRoute] = []
+        self._titan_routes: list[TitanRoute] = []
 
     def add_route(self, route: Route) -> None:
         """Add a route to the router.
@@ -350,6 +488,33 @@ class Router:
                 params = route.extract_params(path)
                 return route, params
         return None
+
+    def add_titan_route(self, route: TitanRoute) -> None:
+        """Add a Titan upload route to the router.
+
+        Args:
+            route: The Titan route to add.
+        """
+        self._titan_routes.append(route)
+
+    def match_titan(self, path: str) -> tuple[TitanRoute, dict[str, Any]] | None:
+        """Find a matching Titan route and extract parameters.
+
+        Args:
+            path: URL path to match.
+
+        Returns:
+            Tuple of (titan_route, params) if found, None otherwise.
+        """
+        for route in self._titan_routes:
+            if route.matches(path):
+                params = route.extract_params(path)
+                return route, params
+        return None
+
+    def has_titan_routes(self) -> bool:
+        """Check if any Titan routes are registered."""
+        return len(self._titan_routes) > 0
 
     def reverse(self, name: str, **params: Any) -> str:
         """Build URL for a named route.

@@ -11,13 +11,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from nauyaca.protocol.request import GeminiRequest
+from nauyaca.protocol.request import TitanRequest as NauyacaTitanRequest
 from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
-from .exceptions import GeminiException, NotFound, TaskConfigurationError
-from .requests import Request
+from .exceptions import (
+    CertificateRequired,
+    GeminiException,
+    NotFound,
+    TaskConfigurationError,
+)
+from .requests import Request, TitanRequest
 from .responses import Input, Redirect, convert_response
-from .routing import MountedRoute, Route, Router
+from .routing import MountedRoute, Route, Router, TitanRoute
 
 if TYPE_CHECKING:
     from .tasks import BackgroundTask
@@ -223,6 +229,45 @@ class Xitzin:
                 path, handler, name=name, input_prompt=prompt, sensitive_input=sensitive
             )
             self._router.add_route(route)
+            return handler
+
+        return decorator
+
+    def titan(
+        self,
+        path: str,
+        *,
+        name: str | None = None,
+        auth_tokens: list[str] | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Register a Titan upload handler.
+
+        Titan is the upload companion protocol to Gemini. This decorator
+        registers a handler for Titan upload requests.
+
+        Args:
+            path: URL path pattern (e.g., "/upload/{filename}").
+            name: Optional route name. Defaults to function name.
+            auth_tokens: List of valid authentication tokens. If provided,
+                requests without a valid token are rejected with status 60.
+
+        Returns:
+            Decorator function.
+
+        Example:
+            @app.titan("/upload/{filename}", auth_tokens=["secret123"])
+            def upload(request: TitanRequest, content: bytes,
+                       mime_type: str, token: str | None, filename: str):
+                if request.is_delete():
+                    Path(f"./uploads/{filename}").unlink()
+                    return "# Deleted"
+                Path(f"./uploads/{filename}").write_bytes(content)
+                return "# Upload successful"
+        """
+
+        def decorator(handler: Callable[..., Any]) -> Callable[..., Any]:
+            route = TitanRoute(path, handler, name=name, auth_tokens=auth_tokens)
+            self._router.add_titan_route(route)
             return handler
 
         return decorator
@@ -573,14 +618,59 @@ class Xitzin:
                 meta="Internal server error",
             )
 
+    async def _handle_titan_request(
+        self, raw_request: NauyacaTitanRequest
+    ) -> GeminiResponse:
+        """Handle an incoming Titan upload request.
+
+        This is the Titan request processing logic, separate from Gemini.
+        """
+        request = TitanRequest(raw_request, self)
+
+        try:
+            # Match Titan route
+            match = self._router.match_titan(request.path)
+            if match is None:
+                raise NotFound(f"No Titan route matches: {request.path}")
+
+            route, params = match
+
+            # Validate auth token if required
+            if route.auth_tokens is not None:
+                if not request.token or request.token not in route.auth_tokens:
+                    raise CertificateRequired("Valid authentication token required")
+
+            # Build middleware chain
+            async def call_handler(req: TitanRequest) -> GeminiResponse:
+                result = await route.call_handler(req, params)
+                return convert_response(result, req)
+
+            # Apply middleware (in reverse order so first registered runs first)
+            handler = call_handler
+            for mw in reversed(self._middleware):
+                handler = self._wrap_middleware(mw, handler)
+
+            return await handler(request)
+
+        except GeminiException as e:
+            return GeminiResponse(status=e.status_code, meta=e.message)
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+            return GeminiResponse(
+                status=StatusCode.TEMPORARY_FAILURE,
+                meta="Internal server error",
+            )
+
     def _wrap_middleware(
         self,
         middleware: Callable[..., Any],
-        next_handler: Callable[[Request], Any],
-    ) -> Callable[[Request], Any]:
+        next_handler: Callable[..., Any],
+    ) -> Callable[..., Any]:
         """Wrap a handler with middleware."""
 
-        async def wrapped(request: Request) -> GeminiResponse:
+        async def wrapped(request: Any) -> GeminiResponse:
             if asyncio.iscoroutinefunction(middleware):
                 return await middleware(request, next_handler)
             return middleware(request, next_handler)
@@ -659,11 +749,30 @@ class Xitzin:
             async def handle(request: GeminiRequest) -> GeminiResponse:
                 return await self._handle_request(request)
 
+            # Create Titan upload handler if Titan routes are registered
+            upload_handler = None
+            if self._router.has_titan_routes():
+                from nauyaca.server.handler import UploadHandler
+
+                class XitzinUploadHandler(UploadHandler):
+                    """Wrapper to route Titan uploads to Xitzin handlers."""
+
+                    def __init__(self, app: "Xitzin") -> None:
+                        self._app = app
+
+                    async def handle_upload(
+                        self, request: NauyacaTitanRequest
+                    ) -> GeminiResponse:
+                        return await self._app._handle_titan_request(request)
+
+                upload_handler = XitzinUploadHandler(self)
+                print("[Xitzin] Titan upload support enabled")
+
             # Use TLSServerProtocol for manual TLS handling
             # (supports self-signed client certs)
             def create_protocol() -> TLSServerProtocol:
                 return TLSServerProtocol(
-                    lambda: GeminiServerProtocol(handle, None),  # type: ignore[arg-type]
+                    lambda: GeminiServerProtocol(handle, None, upload_handler),
                     ssl_context,
                 )
 

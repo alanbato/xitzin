@@ -42,7 +42,7 @@ from .exceptions import (
     TaskConfigurationError,
     TemporaryFailure,
 )
-from .requests import Request
+from .requests import Request, TitanRequest
 from .responses import Input, Link, Redirect, Response
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "Xitzin",
     # Request/Response
     "Request",
+    "TitanRequest",
     "Response",
     "Input",
     "Redirect",
