@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Virtual Hosting**: Host multiple applications under different hostnames on a single server
+  - `app.vhost()` convenience method for configuring hostname-based routing
+  - `VirtualHostMiddleware` class for direct middleware usage
+  - Wildcard hostname patterns (e.g., `*.example.com`)
+  - Configurable fallback behavior: default app, status code, or custom handler
+  - Full sub-app support: each virtual host can have its own routes, middleware, templates, and Titan uploads
+
 - **URL Reversing**: Build URLs from route names instead of hardcoding paths
   - Routes are auto-named after their handler function, or explicitly via `name=` parameter
   - `app.reverse("route_name", **params)` builds URLs from route names

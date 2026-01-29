@@ -22,6 +22,7 @@ Example:
 
 from .application import Xitzin
 from .cgi import CGIConfig, CGIHandler, CGIScript
+from .middleware import VirtualHostMiddleware
 from .scgi import SCGIApp, SCGIConfig, SCGIHandler
 from .exceptions import (
     BadRequest,
@@ -55,6 +56,8 @@ __all__ = [
     "Input",
     "Redirect",
     "Link",
+    # Middleware
+    "VirtualHostMiddleware",
     # CGI support
     "CGIConfig",
     "CGIHandler",

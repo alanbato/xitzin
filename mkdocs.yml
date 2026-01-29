@@ -121,6 +121,7 @@ nav:
       - Error Handling: how-to/error-handling.md
       - Testing: how-to/testing.md
       - Deployment: how-to/deployment.md
+      - Virtual Hosting: how-to/virtual-hosting.md
   - Explanation:
       - explanation/index.md
       - Gemini Protocol: explanation/gemini-protocol.md

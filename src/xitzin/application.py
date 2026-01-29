@@ -399,6 +399,69 @@ class Xitzin:
 
         self.mount(path, handler, name=name)
 
+    def vhost(
+        self,
+        hosts: dict[str, "Xitzin"],
+        *,
+        default_app: "Xitzin | None" = None,
+        fallback_status: int = 53,
+        fallback_handler: Callable[[Request], Any] | None = None,
+    ) -> None:
+        """Configure virtual hosting for this application.
+
+        This is a convenience method that creates and registers VirtualHostMiddleware.
+        The middleware routes requests to different apps based on hostname.
+
+        Args:
+            hosts: Mapping of hostname patterns to Xitzin apps.
+                Patterns can be exact ("example.com") or wildcards ("*.example.com").
+                Exact matches are checked first, then wildcards in definition order.
+            default_app: Default app when no pattern matches.
+            fallback_status: Status code for unmatched hosts (default: 53).
+                Common values: 53 (Proxy Refused), 51 (Not Found), 59 (Bad Request).
+            fallback_handler: Custom handler for unmatched hosts.
+                Takes precedence over default_app and fallback_status.
+
+        Example:
+            main_app = Xitzin(title="Main")
+            blog_app = Xitzin(title="Blog")
+            api_app = Xitzin(title="API")
+
+            @blog_app.gemini("/")
+            def blog_home(request: Request):
+                return "# Blog Home"
+
+            @api_app.gemini("/")
+            def api_home(request: Request):
+                return "# API Home"
+
+            @main_app.gemini("/")
+            def main_home(request: Request):
+                return "# Main Home"
+
+            # Configure as gateway
+            main_app.vhost({
+                "blog.example.com": blog_app,
+                "*.api.example.com": api_app,
+            }, default_app=main_app)
+
+            main_app.run()
+        """
+        from .middleware import VirtualHostMiddleware
+
+        vhost_mw = VirtualHostMiddleware(
+            hosts,
+            default_app=default_app,
+            fallback_status=fallback_status,
+            fallback_handler=fallback_handler,
+        )
+
+        @self.middleware
+        async def virtual_host_dispatcher(
+            request: Request, call_next: Callable[..., Any]
+        ) -> GeminiResponse:
+            return await vhost_mw(request, call_next)
+
     def on_startup(self, handler: Callable[[], Any]) -> Callable[[], Any]:
         """Register a startup event handler.
 
@@ -559,64 +622,56 @@ class Xitzin:
         """
         request = Request(raw_request, self)
 
-        try:
-            # Check mounted routes first
-            mount_match = self._router.match_mount(request.path)
-            if mount_match is not None:
-                mounted_route, path_info = mount_match
-
-                # Build middleware chain for mounted handler
-                async def call_mounted_handler(req: Request) -> GeminiResponse:
+        # Build middleware chain around the entire routing logic
+        async def route_and_handle(req: Request) -> GeminiResponse:
+            try:
+                # Check mounted routes first
+                mount_match = self._router.match_mount(req.path)
+                if mount_match is not None:
+                    mounted_route, path_info = mount_match
                     result = await mounted_route.call_handler(req, path_info)
                     return convert_response(result, req)
 
-                # Apply middleware
-                handler = call_mounted_handler
-                for mw in reversed(self._middleware):
-                    handler = self._wrap_middleware(mw, handler)
+                # Match regular route
+                match = self._router.match(req.path)
+                if match is None:
+                    raise NotFound(f"No route matches: {req.path}")
 
-                return await handler(request)
+                route, params = match
 
-            # Match regular route
-            match = self._router.match(request.path)
-            if match is None:
-                raise NotFound(f"No route matches: {request.path}")
+                # Handle input flow
+                if route.input_prompt and not req.query:
+                    return Input(
+                        route.input_prompt, route.sensitive_input
+                    ).to_gemini_response()
 
-            route, params = match
+                # Add query to params for input routes
+                if route.input_prompt and req.query:
+                    params["query"] = req.query
 
-            # Handle input flow
-            if route.input_prompt and not request.query:
-                return Input(
-                    route.input_prompt, route.sensitive_input
-                ).to_gemini_response()
-
-            # Add query to params for input routes
-            if route.input_prompt and request.query:
-                params["query"] = request.query
-
-            # Build middleware chain
-            async def call_handler(req: Request) -> GeminiResponse:
+                # Call the handler
                 result = await route.call_handler(req, params)
                 return convert_response(result, req)
 
-            # Apply middleware (in reverse order so first registered runs first)
-            handler = call_handler
-            for mw in reversed(self._middleware):
-                handler = self._wrap_middleware(mw, handler)
+            except GeminiException as e:
+                return GeminiResponse(status=e.status_code, meta=e.message)
+            except Exception:
+                # Log the error and return a generic failure
+                import traceback
 
-            return await handler(request)
+                traceback.print_exc()
+                return GeminiResponse(
+                    status=StatusCode.TEMPORARY_FAILURE,
+                    meta="Internal server error",
+                )
 
-        except GeminiException as e:
-            return GeminiResponse(status=e.status_code, meta=e.message)
-        except Exception:
-            # Log the error and return a generic failure
-            import traceback
+        # Apply middleware around the entire routing logic
+        # This allows middleware to intercept requests before routing
+        handler = route_and_handle
+        for mw in reversed(self._middleware):
+            handler = self._wrap_middleware(mw, handler)
 
-            traceback.print_exc()
-            return GeminiResponse(
-                status=StatusCode.TEMPORARY_FAILURE,
-                meta="Internal server error",
-            )
+        return await handler(request)
 
     async def _handle_titan_request(
         self, raw_request: NauyacaTitanRequest
@@ -627,41 +682,42 @@ class Xitzin:
         """
         request = TitanRequest(raw_request, self)
 
-        try:
-            # Match Titan route
-            match = self._router.match_titan(request.path)
-            if match is None:
-                raise NotFound(f"No Titan route matches: {request.path}")
+        # Build middleware chain around the entire routing logic
+        async def route_and_handle(req: TitanRequest) -> GeminiResponse:
+            try:
+                # Match Titan route
+                match = self._router.match_titan(req.path)
+                if match is None:
+                    raise NotFound(f"No Titan route matches: {req.path}")
 
-            route, params = match
+                route, params = match
 
-            # Validate auth token if required
-            if route.auth_tokens is not None:
-                if not request.token or request.token not in route.auth_tokens:
-                    raise CertificateRequired("Valid authentication token required")
+                # Validate auth token if required
+                if route.auth_tokens is not None:
+                    if not req.token or req.token not in route.auth_tokens:
+                        raise CertificateRequired("Valid authentication token required")
 
-            # Build middleware chain
-            async def call_handler(req: TitanRequest) -> GeminiResponse:
+                # Call the handler
                 result = await route.call_handler(req, params)
                 return convert_response(result, req)
 
-            # Apply middleware (in reverse order so first registered runs first)
-            handler = call_handler
-            for mw in reversed(self._middleware):
-                handler = self._wrap_middleware(mw, handler)
+            except GeminiException as e:
+                return GeminiResponse(status=e.status_code, meta=e.message)
+            except Exception:
+                import traceback
 
-            return await handler(request)
+                traceback.print_exc()
+                return GeminiResponse(
+                    status=StatusCode.TEMPORARY_FAILURE,
+                    meta="Internal server error",
+                )
 
-        except GeminiException as e:
-            return GeminiResponse(status=e.status_code, meta=e.message)
-        except Exception:
-            import traceback
+        # Apply middleware around the entire routing logic
+        handler = route_and_handle
+        for mw in reversed(self._middleware):
+            handler = self._wrap_middleware(mw, handler)
 
-            traceback.print_exc()
-            return GeminiResponse(
-                status=StatusCode.TEMPORARY_FAILURE,
-                meta="Internal server error",
-            )
+        return await handler(request)
 
     def _wrap_middleware(
         self,

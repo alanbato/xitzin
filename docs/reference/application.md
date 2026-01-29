@@ -16,6 +16,9 @@ The core application class that handles routing, middleware, and server lifecycl
         - redirect
         - gemini
         - input
+        - titan
+        - mount
+        - vhost
         - task
         - on_startup
         - on_shutdown

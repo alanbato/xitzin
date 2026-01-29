@@ -7,6 +7,7 @@ and modify responses before they are sent to clients.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from abc import ABC
 from collections import OrderedDict
@@ -18,6 +19,7 @@ from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
 if TYPE_CHECKING:
+    from .application import Xitzin
     from .requests import Request
 
 # Type alias for middleware call_next function
@@ -382,3 +384,185 @@ class UserSessionMiddleware(BaseMiddleware):
                 currsize=len(self._async_cache),
             )
         return self._sync_cached_loader.cache_info()
+
+
+class VirtualHostMiddleware(BaseMiddleware):
+    """Middleware for hostname-based virtual hosting.
+
+    Routes requests to different Xitzin applications based on the hostname
+    in the request URL. Supports exact hostname matches and wildcard patterns.
+
+    Example:
+        from xitzin import Xitzin
+        from xitzin.middleware import VirtualHostMiddleware
+
+        blog_app = Xitzin(title="Blog")
+        api_app = Xitzin(title="API")
+        main_app = Xitzin(title="Gateway")
+
+        @blog_app.gemini("/")
+        def blog_home(request):
+            return "# Blog Home"
+
+        @api_app.gemini("/")
+        def api_home(request):
+            return "# API Home"
+
+        @main_app.gemini("/")
+        def main_home(request):
+            return "# Main Home"
+
+        # Create virtual host middleware
+        vhost_mw = VirtualHostMiddleware({
+            "blog.example.com": blog_app,
+            "*.api.example.com": api_app,
+        }, default_app=main_app)
+
+        @main_app.middleware
+        async def vhost(request, call_next):
+            return await vhost_mw(request, call_next)
+
+        main_app.run()
+    """
+
+    def __init__(
+        self,
+        hosts: dict[str, "Xitzin"],
+        *,
+        default_app: "Xitzin | None" = None,
+        fallback_status: int = 53,
+        fallback_handler: (
+            Callable[["Request"], Any] | Callable[["Request"], Awaitable[Any]] | None
+        ) = None,
+    ) -> None:
+        """Create virtual host middleware.
+
+        Args:
+            hosts: Mapping of hostname patterns to Xitzin apps.
+                Keys can be exact hostnames ("example.com") or wildcard patterns
+                ("*.example.com"). Exact matches are checked first, then wildcards
+                in definition order.
+            default_app: Default app to use when no pattern matches.
+                Takes precedence over fallback_status.
+            fallback_status: Status code to return when no match and no default_app.
+                Defaults to 53 (Proxy Request Refused). Common values:
+                - 53: Proxy Request Refused (default)
+                - 51: Not Found
+                - 59: Bad Request
+            fallback_handler: Custom handler function for unmatched hosts.
+                Receives the request and must return a response. Takes precedence
+                over both default_app and fallback_status. Can be sync or async.
+        """
+        self._default_app = default_app
+        self._fallback_status = fallback_status
+        self._fallback_handler = fallback_handler
+        self._is_fallback_async = (
+            iscoroutinefunction(fallback_handler) if fallback_handler else False
+        )
+
+        # Separate exact and wildcard patterns for efficiency
+        self._exact_hosts: dict[str, "Xitzin"] = {}
+        self._wildcard_patterns: list[tuple[re.Pattern[str], "Xitzin"]] = []
+
+        for pattern, app in hosts.items():
+            if pattern.startswith("*."):
+                compiled = self._compile_wildcard_pattern(pattern)
+                if compiled:
+                    self._wildcard_patterns.append((compiled, app))
+            else:
+                self._exact_hosts[pattern.lower()] = app
+
+    def _compile_wildcard_pattern(self, pattern: str) -> re.Pattern[str] | None:
+        """Convert wildcard pattern to regex.
+
+        Supports patterns like:
+        - *.example.com -> matches "blog.example.com", "api.example.com"
+
+        Args:
+            pattern: Wildcard pattern string starting with "*.".
+
+        Returns:
+            Compiled regex pattern, or None if invalid.
+        """
+        if not pattern.startswith("*."):
+            return None
+
+        # Extract domain part after "*."
+        domain = pattern[2:]
+        # Escape special regex chars in domain
+        domain_escaped = re.escape(domain)
+        # Replace the wildcard with a pattern that matches any non-dot chars
+        regex = f"^[^.]+\\.{domain_escaped}$"
+
+        return re.compile(regex, re.IGNORECASE)
+
+    def _match_hostname(self, hostname: str) -> "Xitzin | None":
+        """Find the app for a given hostname.
+
+        Checks exact matches first, then wildcard patterns in order.
+
+        Args:
+            hostname: The hostname from the request.
+
+        Returns:
+            Matching Xitzin app, or None if no match.
+        """
+        hostname_lower = hostname.lower()
+
+        # Try exact match first
+        if hostname_lower in self._exact_hosts:
+            return self._exact_hosts[hostname_lower]
+
+        # Try wildcard patterns
+        for pattern, app in self._wildcard_patterns:
+            if pattern.match(hostname_lower):
+                return app
+
+        return None
+
+    async def before_request(
+        self, request: "Request"
+    ) -> "Request | GeminiResponse | None":
+        """Route request to appropriate app based on hostname."""
+        from .requests import TitanRequest
+        from .responses import convert_response
+
+        hostname = request.hostname
+
+        # Find matching app
+        app = self._match_hostname(hostname)
+
+        # Handle no match
+        if app is None:
+            # Priority 1: Custom fallback handler
+            if self._fallback_handler:
+                if self._is_fallback_async:
+                    result = await self._fallback_handler(request)
+                else:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(
+                        None, self._fallback_handler, request
+                    )
+                return convert_response(result, request)
+
+            # Priority 2: Default app
+            if self._default_app:
+                app = self._default_app
+            else:
+                # Priority 3: Fallback status
+                return GeminiResponse(
+                    status=StatusCode(self._fallback_status),
+                    meta="Host not configured for this server",
+                )
+
+        # If the matched app is the same as the request's app, return None
+        # to continue processing through the normal route chain (avoid recursion)
+        if request._app is not None and app is request._app:
+            return None
+
+        # Dispatch to matched app
+        if isinstance(request, TitanRequest):
+            response = await app._handle_titan_request(request._raw_request)
+        else:
+            response = await app._handle_request(request._raw_request)
+        return response

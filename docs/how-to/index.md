@@ -70,4 +70,10 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     Deploy your capsule to production.
 
+-   [**Virtual Hosting**](virtual-hosting.md)
+
+    ---
+
+    Host multiple applications under different hostnames on a single server.
+
 </div>

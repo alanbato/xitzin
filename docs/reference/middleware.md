@@ -27,3 +27,15 @@ Logs incoming requests and outgoing responses.
 Simple in-memory rate limiting.
 
 ::: xitzin.middleware.RateLimitMiddleware
+
+### UserSessionMiddleware
+
+Loads and caches user data from certificate fingerprints.
+
+::: xitzin.middleware.UserSessionMiddleware
+
+### VirtualHostMiddleware
+
+Routes requests to different applications based on hostname.
+
+::: xitzin.middleware.VirtualHostMiddleware
