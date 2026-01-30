@@ -7,6 +7,7 @@ from nauyaca.protocol.response import GeminiResponse
 from nauyaca.protocol.status import StatusCode
 
 from xitzin import Request, Xitzin, VirtualHostMiddleware
+from xitzin.exceptions import BadRequest, NotFound
 
 
 def make_request(url: str) -> GeminiRequest:
@@ -132,6 +133,28 @@ class TestVirtualHostMiddlewareUnit:
         assert mw._compile_wildcard_pattern("example.com") is None
         assert mw._compile_wildcard_pattern("*example.com") is None
 
+    def test_overlapping_wildcards_order(self):
+        """Test that overlapping wildcards match in definition order."""
+        app_specific = Xitzin(title="Specific")
+        app_general = Xitzin(title="General")
+
+        # More specific wildcard defined first
+        mw = VirtualHostMiddleware(
+            {
+                "*.foo.example.com": app_specific,
+                "*.example.com": app_general,
+            }
+        )
+
+        # *.foo.example.com should match sub.foo.example.com
+        assert mw._match_hostname("sub.foo.example.com") is app_specific
+
+        # *.example.com should match sub.example.com
+        assert mw._match_hostname("sub.example.com") is app_general
+
+        # Neither should match example.com (no subdomain)
+        assert mw._match_hostname("example.com") is None
+
 
 class TestVirtualHostMiddlewareFallback:
     """Tests for VirtualHostMiddleware fallback behavior."""
@@ -194,6 +217,36 @@ class TestVirtualHostMiddlewareFallback:
 
 class TestVirtualHostMiddlewareIntegration:
     """Integration tests for VirtualHostMiddleware."""
+
+    def test_async_fallback_handler_integration(self):
+        """Test async fallback handler executes correctly."""
+        app = Xitzin(title="App")
+
+        @app.gemini("/")
+        def home(request: Request):
+            return "# Home"
+
+        async def async_fallback(request: Request):
+            return f"# Async fallback for: {request.hostname}"
+
+        vhost_mw = VirtualHostMiddleware(
+            {"example.com": app},
+            fallback_handler=async_fallback,
+        )
+
+        @app.middleware
+        async def vhost(request, call_next):
+            return await vhost_mw(request, call_next)
+
+        # Known host works normally
+        response = handle_request_sync(app, "gemini://example.com/")
+        assert response.status == StatusCode.SUCCESS
+        assert response.body == "# Home"
+
+        # Unknown host uses async fallback handler
+        response = handle_request_sync(app, "gemini://unknown.example.com/")
+        assert response.status == StatusCode.SUCCESS
+        assert "Async fallback for: unknown.example.com" in response.body
 
     def test_dispatch_to_correct_app(self):
         """Test that requests are dispatched to the correct app."""
@@ -501,6 +554,39 @@ class TestVirtualHostWithRoutes:
         assert response.body == "# Blog"
         assert "blog_mw" in middleware_called
 
+    def test_main_app_middleware_runs_before_dispatch(self):
+        """Test that main app middleware runs before vhost dispatch."""
+        sub_app = Xitzin(title="SubApp")
+        main_app = Xitzin(title="Main")
+        execution_order = []
+
+        @sub_app.gemini("/")
+        def sub_home(request: Request):
+            execution_order.append("sub_handler")
+            return "# Sub Home"
+
+        # Register middleware on main_app BEFORE vhost()
+        @main_app.middleware
+        async def main_mw(request, call_next):
+            execution_order.append("main_mw_before")
+            response = await call_next(request)
+            execution_order.append("main_mw_after")
+            return response
+
+        # Now register vhost middleware (will be added after main_mw)
+        main_app.vhost(
+            {
+                "sub.example.com": sub_app,
+            },
+        )
+
+        response = handle_request_sync(main_app, "gemini://sub.example.com/")
+        assert response.status == StatusCode.SUCCESS
+        assert response.body == "# Sub Home"
+
+        # Verify execution order: main_mw runs, then vhost dispatches to sub_app
+        assert execution_order == ["main_mw_before", "sub_handler", "main_mw_after"]
+
 
 class TestTitanVirtualHosting:
     """Tests for Titan requests through virtual hosting."""
@@ -574,6 +660,77 @@ class TestTitanVirtualHosting:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
+    def test_sub_app_exception_handling(self):
+        """Test that exceptions in sub-app handlers return TEMPORARY_FAILURE."""
+        sub_app = Xitzin(title="SubApp")
+        main_app = Xitzin(title="Main")
+
+        @sub_app.gemini("/error")
+        def error_route(request: Request):
+            raise Exception("Something went wrong")
+
+        main_app.vhost(
+            {
+                "sub.example.com": sub_app,
+            },
+        )
+
+        response = handle_request_sync(main_app, "gemini://sub.example.com/error")
+        assert response.status == StatusCode.TEMPORARY_FAILURE
+
+    def test_sub_app_gemini_exception_handling(self):
+        """Test that GeminiExceptions in sub-app return correct status."""
+        sub_app = Xitzin(title="SubApp")
+        main_app = Xitzin(title="Main")
+
+        @sub_app.gemini("/bad")
+        def bad_route(request: Request):
+            raise BadRequest("Invalid request data")
+
+        @sub_app.gemini("/custom")
+        def custom_route(request: Request):
+            raise NotFound("Resource not found")
+
+        main_app.vhost(
+            {
+                "sub.example.com": sub_app,
+            },
+        )
+
+        # BadRequest should return status 59
+        response = handle_request_sync(main_app, "gemini://sub.example.com/bad")
+        assert response.status == StatusCode.BAD_REQUEST
+        assert "Invalid request data" in response.meta
+
+        # NotFound should return status 51
+        response = handle_request_sync(main_app, "gemini://sub.example.com/custom")
+        assert response.status == StatusCode.NOT_FOUND
+        assert "Resource not found" in response.meta
+
+    def test_sub_app_route_not_found(self):
+        """Test 404 when host matches but route doesn't exist in sub-app."""
+        sub_app = Xitzin(title="SubApp")
+        main_app = Xitzin(title="Main")
+
+        @sub_app.gemini("/exists")
+        def existing_route(request: Request):
+            return "# Exists"
+
+        main_app.vhost(
+            {
+                "sub.example.com": sub_app,
+            },
+        )
+
+        # Route that exists should work
+        response = handle_request_sync(main_app, "gemini://sub.example.com/exists")
+        assert response.status == StatusCode.SUCCESS
+        assert response.body == "# Exists"
+
+        # Route that doesn't exist should return 51 NOT_FOUND
+        response = handle_request_sync(main_app, "gemini://sub.example.com/nonexistent")
+        assert response.status == StatusCode.NOT_FOUND
+
     def test_empty_hosts_dict(self):
         """Test with empty hosts dictionary."""
         default_app = Xitzin(title="Default")
@@ -644,3 +801,58 @@ class TestEdgeCases:
 
         response = handle_request_sync(main_app, "gemini://app2.example.com/")
         assert response.body == "# App2 Home"
+
+
+class TestNestedVirtualHosting:
+    """Tests for nested virtual hosting scenarios."""
+
+    def test_nested_vhost(self):
+        """Test sub-app with its own vhost configuration."""
+        # Create the nested app (deepest level)
+        nested_app = Xitzin(title="Nested")
+
+        @nested_app.gemini("/")
+        def nested_home(request: Request):
+            return "# Nested Home"
+
+        # Create the sub-app (middle level) which has its own vhost
+        sub_app = Xitzin(title="SubApp")
+
+        @sub_app.gemini("/")
+        def sub_home(request: Request):
+            return "# Sub Home"
+
+        # Sub-app routes to nested_app via vhost
+        sub_app.vhost(
+            {
+                "nested.sub.example.com": nested_app,
+            },
+            default_app=sub_app,
+        )
+
+        # Create main app (top level)
+        main_app = Xitzin(title="Main")
+
+        @main_app.gemini("/")
+        def main_home(request: Request):
+            return "# Main Home"
+
+        # Main app routes to sub_app via vhost
+        main_app.vhost(
+            {
+                "*.sub.example.com": sub_app,
+            },
+            default_app=main_app,
+        )
+
+        # Test routing to main app (default)
+        response = handle_request_sync(main_app, "gemini://example.com/")
+        assert response.body == "# Main Home"
+
+        # Test routing through main_app -> sub_app
+        response = handle_request_sync(main_app, "gemini://api.sub.example.com/")
+        assert response.body == "# Sub Home"
+
+        # Test routing through main_app -> sub_app -> nested_app
+        response = handle_request_sync(main_app, "gemini://nested.sub.example.com/")
+        assert response.body == "# Nested Home"
