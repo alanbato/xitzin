@@ -604,6 +604,40 @@ class TestIntegration:
         assert response.status == 20
         assert "# About" in response.body
 
+    def test_root_mount_serves_subpaths(self, static_dir: Path) -> None:
+        """Test static files mounted at root serves sub-paths correctly.
+
+        Regression test for: app.static("/", directory) should serve
+        all files under the directory, not just the root path.
+        """
+        app = Xitzin()
+        app.static("/", static_dir)
+        client = TestClient(app)
+
+        # Root path should serve index
+        response = client.get("/")
+        assert response.status == 20
+        assert "# Welcome" in response.body
+
+        # Sub-path file should be served
+        response = client.get("/about.gmi")
+        assert response.status == 20
+        assert "# About" in response.body
+
+        # Subdirectory index should be served
+        response = client.get("/docs/")
+        assert response.status == 20
+        assert "# Documentation" in response.body
+
+        # File in subdirectory should be served
+        response = client.get("/docs/guide.gmi")
+        assert response.status == 20
+        assert "# User Guide" in response.body
+
+        # Non-existent file should return 404
+        response = client.get("/nonexistent.gmi")
+        assert response.status == 51
+
 
 # =============================================================================
 # Helper Function Tests

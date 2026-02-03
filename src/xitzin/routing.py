@@ -243,6 +243,9 @@ class MountedRoute:
         Returns:
             True if path starts with this mount's prefix.
         """
+        # Root mount matches all paths
+        if self.path_prefix == "/":
+            return path.startswith("/")
         # Exact match or prefix with /
         return path == self.path_prefix or path.startswith(self.path_prefix + "/")
 
