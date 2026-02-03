@@ -26,6 +26,7 @@ from .responses import Input, Redirect, convert_response
 from .routing import MountedRoute, Route, Router, TitanRoute
 
 if TYPE_CHECKING:
+    from .staticfiles import StaticFiles
     from .tasks import BackgroundTask
     from .templating import TemplateEngine
 
@@ -398,6 +399,64 @@ class Xitzin:
             handler = SCGIApp(socket_path, config=config)  # type: ignore[arg-type]
 
         self.mount(path, handler, name=name)
+
+    def static(
+        self,
+        path: str,
+        directory: Path | str,
+        *,
+        name: str | None = None,
+        index_files: list[str] | None = None,
+        directory_listing: bool = False,
+        max_file_size: int = 100 * 1024 * 1024,
+        mime_types: dict[str, str] | None = None,
+        follow_symlinks: bool = False,
+    ) -> "StaticFiles":
+        """Mount a static file directory at a path prefix.
+
+        This is a convenience method that creates a StaticFiles handler and
+        mounts it. Returns the handler so you can add a custom 404 handler.
+
+        Args:
+            path: Mount point prefix (e.g., "/files", "/static").
+            directory: Directory to serve files from.
+            name: Optional name for the mount.
+            index_files: Files to serve for directory requests.
+                Defaults to ["index.gmi", "index.gemini"].
+            directory_listing: Enable directory listing when no index found.
+            max_file_size: Maximum file size to serve (bytes). Default: 100 MiB.
+            mime_types: Custom MIME type mappings by extension.
+            follow_symlinks: Whether to follow symbolic links.
+
+        Returns:
+            The StaticFiles handler, for adding custom 404 handling.
+
+        Example:
+            # Simple usage
+            app.static("/files", "./public")
+
+            # With directory listing
+            app.static("/docs", "./documentation", directory_listing=True)
+
+            # With custom 404 handler
+            static = app.static("/images", "./static/images")
+
+            @static.not_found
+            def image_not_found(request, path_info):
+                return "# Image Not Found"
+        """
+        from .staticfiles import StaticFiles
+
+        handler = StaticFiles(
+            directory,
+            index_files=index_files,
+            directory_listing=directory_listing,
+            max_file_size=max_file_size,
+            mime_types=mime_types,
+            follow_symlinks=follow_symlinks,
+        )
+        self.mount(path, handler, name=name)
+        return handler
 
     def vhost(
         self,

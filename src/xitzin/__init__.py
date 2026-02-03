@@ -24,6 +24,7 @@ from .application import Xitzin
 from .cgi import CGIConfig, CGIHandler, CGIScript
 from .middleware import VirtualHostMiddleware
 from .scgi import SCGIApp, SCGIConfig, SCGIHandler
+from .staticfiles import StaticFiles, StaticFilesConfig
 from .exceptions import (
     BadRequest,
     CertificateNotAuthorized,
@@ -66,6 +67,9 @@ __all__ = [
     "SCGIApp",
     "SCGIConfig",
     "SCGIHandler",
+    # Static files
+    "StaticFiles",
+    "StaticFilesConfig",
     # Exceptions
     "GeminiException",
     "InputRequired",
