@@ -46,6 +46,12 @@ Task-oriented guides for specific features. Each guide focuses on solving a part
 
     Implement certificate-based authentication and authorization.
 
+-   [**Static Files**](static-files.md)
+
+    ---
+
+    Serve static files, images, and directories from your capsule.
+
 -   [**CGI Scripts**](cgi-scripts.md)
 
     ---

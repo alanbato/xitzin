@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Static File Handling**: Native static file serving without adapter patterns
+  - `StaticFiles` handler for mounting directories
+  - `app.static()` convenience method for simple setup
+  - Automatic MIME type detection with customizable mappings
+  - Directory index files (`index.gmi`, `index.gemini`)
+  - Optional directory listings with file sizes
+  - Custom 404 handlers via `@handler.not_found` decorator
+  - Security controls: path traversal protection, symlink control, file size limits
+  - Binary file support (images, PDFs, etc.)
+
 - **Virtual Hosting**: Host multiple applications under different hostnames on a single server
   - `app.vhost()` convenience method for configuring hostname-based routing
   - `VirtualHostMiddleware` class for direct middleware usage

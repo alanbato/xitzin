@@ -116,6 +116,7 @@ nav:
       - Background Tasks: how-to/background-tasks.md
       - Authentication: how-to/authentication.md
       - Database Migrations: how-to/database-migrations.md
+      - Static Files: how-to/static-files.md
       - CGI Scripts: how-to/cgi-scripts.md
       - SCGI Backends: how-to/scgi-backends.md
       - Error Handling: how-to/error-handling.md
@@ -136,6 +137,7 @@ nav:
       - Responses: reference/responses.md
       - Routing: reference/routing.md
       - Tasks: reference/tasks.md
+      - Static Files: reference/staticfiles.md
       - CGI: reference/cgi.md
       - SCGI: reference/scgi.md
       - Exceptions: reference/exceptions.md
