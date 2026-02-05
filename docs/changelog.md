@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Wildcard hostname patterns (e.g., `*.example.com`)
   - Configurable fallback behavior: default app, status code, or custom handler
   - Full sub-app support: each virtual host can have its own routes, middleware, templates, and Titan uploads
+  - Sub-app lifecycle events: startup/shutdown handlers cascade to sub-apps in correct order
 
 - **URL Reversing**: Build URLs from route names instead of hardcoding paths
   - Routes are auto-named after their handler function, or explicitly via `name=` parameter
