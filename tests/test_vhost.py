@@ -856,3 +856,299 @@ class TestNestedVirtualHosting:
         # Test routing through main_app -> sub_app -> nested_app
         response = handle_request_sync(main_app, "gemini://nested.sub.example.com/")
         assert response.body == "# Nested Home"
+
+
+class TestVhostSubAppLifecycle:
+    """Tests for sub-app lifecycle management with vhost."""
+
+    def test_sub_app_startup_handlers_called(self):
+        """Test that sub-app startup handlers are called."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        events = []
+
+        @sub_app.on_startup
+        def sub_startup():
+            events.append("sub_startup")
+
+        @sub_app.gemini("/")
+        def sub_home(request: Request):
+            return "# Sub"
+
+        main_app.vhost({"sub.example.com": sub_app})
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        assert "sub_startup" in events
+
+    def test_sub_app_shutdown_handlers_called(self):
+        """Test that sub-app shutdown handlers are called."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        events = []
+
+        @sub_app.on_shutdown
+        def sub_shutdown():
+            events.append("sub_shutdown")
+
+        @sub_app.gemini("/")
+        def sub_home(request: Request):
+            return "# Sub"
+
+        main_app.vhost({"sub.example.com": sub_app})
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_shutdown())
+
+        assert "sub_shutdown" in events
+
+    def test_startup_order_main_first_then_sub_apps(self):
+        """Test startup order: main app first, then sub-apps."""
+        main_app = Xitzin(title="Main")
+        sub_app1 = Xitzin(title="Sub1")
+        sub_app2 = Xitzin(title="Sub2")
+        order = []
+
+        @main_app.on_startup
+        def main_startup():
+            order.append("main")
+
+        @sub_app1.on_startup
+        def sub1_startup():
+            order.append("sub1")
+
+        @sub_app2.on_startup
+        def sub2_startup():
+            order.append("sub2")
+
+        main_app.vhost(
+            {
+                "sub1.example.com": sub_app1,
+                "sub2.example.com": sub_app2,
+            }
+        )
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        assert order == ["main", "sub1", "sub2"]
+
+    def test_shutdown_order_sub_apps_first_then_main(self):
+        """Test shutdown order: sub-apps (reverse) first, then main app."""
+        main_app = Xitzin(title="Main")
+        sub_app1 = Xitzin(title="Sub1")
+        sub_app2 = Xitzin(title="Sub2")
+        order = []
+
+        @main_app.on_shutdown
+        def main_shutdown():
+            order.append("main")
+
+        @sub_app1.on_shutdown
+        def sub1_shutdown():
+            order.append("sub1")
+
+        @sub_app2.on_shutdown
+        def sub2_shutdown():
+            order.append("sub2")
+
+        main_app.vhost(
+            {
+                "sub1.example.com": sub_app1,
+                "sub2.example.com": sub_app2,
+            }
+        )
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_shutdown())
+
+        # Sub-apps in reverse order, then main
+        assert order == ["sub2", "sub1", "main"]
+
+    def test_nested_vhost_lifecycle_cascades(self):
+        """Test that nested vhost lifecycle events cascade correctly."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        nested_app = Xitzin(title="Nested")
+        startup_order = []
+        shutdown_order = []
+
+        @main_app.on_startup
+        def main_startup():
+            startup_order.append("main")
+
+        @main_app.on_shutdown
+        def main_shutdown():
+            shutdown_order.append("main")
+
+        @sub_app.on_startup
+        def sub_startup():
+            startup_order.append("sub")
+
+        @sub_app.on_shutdown
+        def sub_shutdown():
+            shutdown_order.append("sub")
+
+        @nested_app.on_startup
+        def nested_startup():
+            startup_order.append("nested")
+
+        @nested_app.on_shutdown
+        def nested_shutdown():
+            shutdown_order.append("nested")
+
+        # Nested vhost: main -> sub -> nested
+        sub_app.vhost({"nested.example.com": nested_app})
+        main_app.vhost({"sub.example.com": sub_app})
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+        assert startup_order == ["main", "sub", "nested"]
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_shutdown())
+        assert shutdown_order == ["nested", "sub", "main"]
+
+    def test_duplicate_sub_app_tracked_once(self):
+        """Test that the same app registered multiple times only runs lifecycle once."""
+        main_app = Xitzin(title="Main")
+        shared_app = Xitzin(title="Shared")
+        events = []
+
+        @shared_app.on_startup
+        def shared_startup():
+            events.append("shared_startup")
+
+        # Register same app for multiple hosts
+        main_app.vhost(
+            {
+                "a.example.com": shared_app,
+                "b.example.com": shared_app,
+            }
+        )
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        # Should only be called once
+        assert events.count("shared_startup") == 1
+
+    def test_default_app_lifecycle_called(self):
+        """Test that default_app lifecycle handlers are called."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        default_app = Xitzin(title="Default")
+        events = []
+
+        @default_app.on_startup
+        def default_startup():
+            events.append("default_startup")
+
+        main_app.vhost(
+            {"sub.example.com": sub_app},
+            default_app=default_app,
+        )
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        assert "default_startup" in events
+
+    def test_default_app_same_as_main_not_duplicated(self):
+        """Test that default_app=self doesn't duplicate lifecycle."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        events = []
+
+        @main_app.on_startup
+        def main_startup():
+            events.append("main_startup")
+
+        main_app.vhost(
+            {"sub.example.com": sub_app},
+            default_app=main_app,  # Same as main app
+        )
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        # Main app startup should only run once (not duplicated)
+        assert events.count("main_startup") == 1
+
+    def test_sub_app_startup_error_continues_others(self):
+        """Test that error in one sub-app startup doesn't block others."""
+        main_app = Xitzin(title="Main")
+        bad_app = Xitzin(title="Bad")
+        good_app = Xitzin(title="Good")
+        events = []
+
+        @bad_app.on_startup
+        def bad_startup():
+            events.append("bad_before_error")
+            raise RuntimeError("Startup failed!")
+
+        @good_app.on_startup
+        def good_startup():
+            events.append("good_startup")
+
+        main_app.vhost(
+            {
+                "bad.example.com": bad_app,
+                "good.example.com": good_app,
+            }
+        )
+
+        # Should not raise, should continue to good_app
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+
+        assert "bad_before_error" in events
+        assert "good_startup" in events
+
+    def test_sub_app_shutdown_error_continues_others(self):
+        """Test that error in one sub-app shutdown doesn't block others."""
+        main_app = Xitzin(title="Main")
+        bad_app = Xitzin(title="Bad")
+        good_app = Xitzin(title="Good")
+        events = []
+
+        @bad_app.on_shutdown
+        def bad_shutdown():
+            events.append("bad_before_error")
+            raise RuntimeError("Shutdown failed!")
+
+        @good_app.on_shutdown
+        def good_shutdown():
+            events.append("good_shutdown")
+
+        @main_app.on_shutdown
+        def main_shutdown():
+            events.append("main_shutdown")
+
+        main_app.vhost(
+            {
+                "bad.example.com": bad_app,
+                "good.example.com": good_app,
+            }
+        )
+
+        # Should not raise, should continue to other handlers
+        asyncio.get_event_loop().run_until_complete(main_app._run_shutdown())
+
+        # good_app shutdown runs first (reverse order), then bad_app, then main
+        assert "good_shutdown" in events
+        assert "bad_before_error" in events
+        assert "main_shutdown" in events
+
+    def test_async_sub_app_lifecycle_handlers(self):
+        """Test that async sub-app lifecycle handlers work."""
+        main_app = Xitzin(title="Main")
+        sub_app = Xitzin(title="Sub")
+        events = []
+
+        @sub_app.on_startup
+        async def async_startup():
+            events.append("async_startup")
+
+        @sub_app.on_shutdown
+        async def async_shutdown():
+            events.append("async_shutdown")
+
+        main_app.vhost({"sub.example.com": sub_app})
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_startup())
+        assert "async_startup" in events
+
+        asyncio.get_event_loop().run_until_complete(main_app._run_shutdown())
+        assert "async_shutdown" in events

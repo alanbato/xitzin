@@ -94,6 +94,7 @@ class Xitzin:
         self._middleware: list[Callable[..., Any]] = []
         self._tasks: list[BackgroundTask] = []
         self._task_handles: list[asyncio.Task[Any]] = []
+        self._sub_apps: list[Xitzin] = []
 
         if templates_dir:
             self._init_templates(Path(templates_dir))
@@ -521,6 +522,17 @@ class Xitzin:
         ) -> GeminiResponse:
             return await vhost_mw(request, call_next)
 
+        # Track sub-apps for lifecycle management
+        for app in hosts.values():
+            if app is not self and app not in self._sub_apps:
+                self._sub_apps.append(app)
+        if (
+            default_app is not None
+            and default_app is not self
+            and default_app not in self._sub_apps
+        ):
+            self._sub_apps.append(default_app)
+
     def on_startup(self, handler: Callable[[], Any]) -> Callable[[], Any]:
         """Register a startup event handler.
 
@@ -646,8 +658,26 @@ class Xitzin:
             else:
                 handler()
 
+        # Run sub-app startup handlers
+        for sub_app in self._sub_apps:
+            try:
+                await sub_app._run_startup()
+            except Exception:
+                import traceback
+
+                traceback.print_exc()
+
     async def _run_shutdown(self) -> None:
         """Run all shutdown handlers in reverse order."""
+        # Run sub-app shutdown handlers first (reverse order)
+        for sub_app in reversed(self._sub_apps):
+            try:
+                await sub_app._run_shutdown()
+            except Exception:
+                import traceback
+
+                traceback.print_exc()
+
         for handler in reversed(self._shutdown_handlers):
             if asyncio.iscoroutinefunction(handler):
                 await handler()
