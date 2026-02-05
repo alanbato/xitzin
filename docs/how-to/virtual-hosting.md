@@ -170,6 +170,82 @@ def upload(request, content: bytes, mime_type: str,
     return f"# Uploaded {filename}"
 ```
 
+### Lifecycle Events
+
+Sub-apps registered via `vhost()` have their startup and shutdown handlers called automatically:
+
+```python
+main_app = Xitzin(title="Main")
+blog_app = Xitzin(title="Blog")
+api_app = Xitzin(title="API")
+
+@main_app.on_startup
+async def main_startup():
+    main_app.state.db = await connect_database()
+
+@blog_app.on_startup
+async def blog_startup():
+    blog_app.state.cache = await init_blog_cache()
+
+@api_app.on_startup
+async def api_startup():
+    api_app.state.rate_limiter = await init_rate_limiter()
+
+@main_app.on_shutdown
+async def main_shutdown():
+    await main_app.state.db.close()
+
+@blog_app.on_shutdown
+async def blog_shutdown():
+    await blog_app.state.cache.close()
+
+main_app.vhost({
+    "blog.example.com": blog_app,
+    "api.example.com": api_app,
+})
+
+# When main_app.run() is called:
+# Startup order:  main_startup → blog_startup → api_startup
+# Shutdown order: api_shutdown → blog_shutdown → main_shutdown
+```
+
+**Lifecycle Order:**
+
+- **Startup**: Main app first, then sub-apps in registration order. This allows sub-apps to depend on resources initialized by the main app.
+- **Shutdown**: Sub-apps first (reverse registration order), then main app. This ensures dependents are cleaned up before their dependencies.
+
+**Error Handling:**
+
+If a sub-app's startup or shutdown handler raises an exception, the error is logged but other handlers continue to run. This prevents one failing sub-app from breaking the entire system.
+
+**Nested Virtual Hosting:**
+
+Lifecycle events cascade through nested vhost configurations:
+
+```python
+nested_app = Xitzin(title="Nested")
+sub_app = Xitzin(title="Sub")
+main_app = Xitzin(title="Main")
+
+@nested_app.on_startup
+def nested_start():
+    print("nested starting")
+
+@sub_app.on_startup
+def sub_start():
+    print("sub starting")
+
+@main_app.on_startup
+def main_start():
+    print("main starting")
+
+sub_app.vhost({"nested.example.com": nested_app})
+main_app.vhost({"sub.example.com": sub_app})
+
+# Startup order: main → sub → nested
+# Shutdown order: nested → sub → main
+```
+
 ## Using VirtualHostMiddleware Directly
 
 For more control, use `VirtualHostMiddleware` directly:
