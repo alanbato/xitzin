@@ -845,8 +845,8 @@ class Xitzin:
         """
         from nauyaca.server.protocol import GeminiServerProtocol
         from nauyaca.server.tls_protocol import TLSServerProtocol
-        from nauyaca.security.certificates import generate_self_signed_cert
-        from nauyaca.security.pyopenssl_tls import create_pyopenssl_server_context
+        from nauyaca.security import generate_self_signed_cert  # ty: ignore[unresolved-import]
+        from nauyaca.security import create_pyopenssl_server_context  # ty: ignore[unresolved-import]
         import tempfile
 
         # Run startup handlers
